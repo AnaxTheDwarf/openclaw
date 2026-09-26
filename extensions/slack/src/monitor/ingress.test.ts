@@ -431,10 +431,7 @@ describe("Slack durable ingress", () => {
 
   it("dispatches independently routed threads concurrently after session ownership is established", async () => {
     await withQueue(async (queue) => {
-      let releaseFirstDispatch: () => void = () => {};
-      const firstDispatchGate = new Promise<void>((resolve) => {
-        releaseFirstDispatch = resolve;
-      });
+      const firstDispatchGate = createDeferred<void>();
       const starts: string[] = [];
       const processEvent = vi.fn(async (receiverEvent: ReceiverEvent) => {
         const event = (receiverEvent.body as { event: { thread_ts: string } }).event;
@@ -442,7 +439,7 @@ describe("Slack durable ingress", () => {
         await lifecycle?.onSessionRouted?.(`agent:main:slack:thread:${event.thread_ts}`);
         starts.push(event.thread_ts);
         if (event.thread_ts === "1700000000.000100") {
-          await firstDispatchGate;
+          await firstDispatchGate.promise;
         }
         await lifecycle?.onAdopted();
       });
@@ -450,6 +447,7 @@ describe("Slack durable ingress", () => {
       ingress.start();
 
       try {
+        await ingress.waitForIdle();
         for (const [eventId, threadTs, ts] of [
           ["Ev-thread-one", "1700000000.000100", "1700000000.000101"],
           ["Ev-thread-two", "1700000000.000200", "1700000000.000201"],
@@ -472,7 +470,7 @@ describe("Slack durable ingress", () => {
         await vi.waitFor(() => expect(starts).toHaveLength(2), { timeout: 500 });
         expect(starts).toEqual(["1700000000.000100", "1700000000.000200"]);
       } finally {
-        releaseFirstDispatch();
+        firstDispatchGate.resolve();
         await ingress.waitForIdle();
         await ingress.stop();
       }
@@ -496,10 +494,7 @@ describe("Slack durable ingress", () => {
     },
   ])("serializes $name by their authoritative session", async ({ firstEvent, secondEvent }) => {
     await withQueue(async (queue) => {
-      let releaseFirstDispatch: () => void = () => {};
-      const firstDispatchGate = new Promise<void>((resolve) => {
-        releaseFirstDispatch = resolve;
-      });
+      const firstDispatchGate = createDeferred<void>();
       const starts: string[] = [];
       const processEvent = vi.fn(async (receiverEvent: ReceiverEvent) => {
         const event = (receiverEvent.body as { event: { ts: string } }).event;
@@ -507,7 +502,7 @@ describe("Slack durable ingress", () => {
         await lifecycle?.onSessionRouted?.("agent:main:slack:shared-session");
         starts.push(event.ts);
         if (event.ts === firstEvent.ts) {
-          await firstDispatchGate;
+          await firstDispatchGate.promise;
         }
         await lifecycle?.onAdopted();
       });
@@ -515,6 +510,7 @@ describe("Slack durable ingress", () => {
       ingress.start();
 
       try {
+        await ingress.waitForIdle();
         for (const [eventId, event] of [
           ["Ev-shared-first", firstEvent],
           ["Ev-shared-second", secondEvent],
@@ -535,11 +531,11 @@ describe("Slack durable ingress", () => {
 
         await vi.waitFor(() => expect(processEvent).toHaveBeenCalledTimes(2), { timeout: 500 });
         expect(starts).toEqual([firstEvent.ts]);
-        releaseFirstDispatch();
+        firstDispatchGate.resolve();
         await ingress.waitForIdle();
         expect(starts).toEqual([firstEvent.ts, secondEvent.ts]);
       } finally {
-        releaseFirstDispatch();
+        firstDispatchGate.resolve();
         await ingress.waitForIdle();
         await ingress.stop();
       }
