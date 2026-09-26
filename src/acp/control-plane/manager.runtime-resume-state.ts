@@ -5,6 +5,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
 import type { AcpRuntimeError } from "../runtime/errors.js";
+import type { AcpSessionControlBinding } from "../runtime/session-control-owner.js";
 import type { ManagerRuntimeHandleCache } from "./manager.runtime-handle-cache.js";
 import {
   assertAcpRuntimeOwnerSupport,
@@ -184,6 +185,8 @@ async function clearPersistedRuntimeResumeState(params: {
 
 /** Clears persisted runtime resume identifiers while preserving the manager session shell. */
 export async function discardPersistedManagerRuntimeState(params: {
+  assertCommitAllowed?: () => void;
+  expectedControlBinding?: AcpSessionControlBinding;
   cfg: OpenClawConfig;
   sessionKey: string;
   agentId: string;
@@ -192,6 +195,8 @@ export async function discardPersistedManagerRuntimeState(params: {
 }): Promise<void> {
   const now = Date.now();
   await params.writeSessionMeta({
+    assertCommitAllowed: params.assertCommitAllowed,
+    expectedControlBinding: params.expectedControlBinding,
     cfg: params.cfg,
     sessionKey: params.sessionKey,
     agentId: params.agentId,

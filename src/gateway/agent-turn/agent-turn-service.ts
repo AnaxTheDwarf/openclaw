@@ -160,6 +160,7 @@ export function createAgentTurnService(
     try {
       assertAdmissionCurrent?.();
       const content = await prepareAgentContentPhase({
+        assertAdmissionCurrent,
         request,
         cfg,
         context,

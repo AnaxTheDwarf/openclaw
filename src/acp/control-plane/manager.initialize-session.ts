@@ -35,7 +35,7 @@ export async function runManagerInitializeSession(params: {
   input: AcpInitializeSessionInput;
   sessionKey: string;
   agentId: string;
-  deps: Pick<AcpSessionManagerDeps, "requireRuntimeBackend" | "loadSessionEntry">;
+  deps: Pick<AcpSessionManagerDeps, "requireRuntimeBackend" | "loadSessionEntryAsync">;
   runtimeHandles: ManagerRuntimeHandleCache;
   writeSessionMeta: WriteManagerSessionMeta;
   isCurrentActor?: () => boolean;
@@ -61,7 +61,21 @@ export async function runManagerInitializeSession(params: {
   const requestedCwd = initialRuntimeOptions.cwd;
   const requestedModel = initialRuntimeOptions.model;
   const requestedThinking = initialRuntimeOptions.thinking;
-  const previousMeta = params.deps.loadSessionEntry({ cfg: input.cfg, sessionKey, agentId })?.acp;
+  const assertCurrent = () => {
+    if (!isCurrentActor()) {
+      throw createSupersededActorError(sessionKey);
+    }
+    input.assertActive?.();
+  };
+  const previousMeta = (
+    await params.deps.loadSessionEntryAsync({
+      cfg: input.cfg,
+      sessionKey,
+      agentId,
+      assertCurrent,
+    })
+  )?.acp;
+  assertCurrent();
   input.assertActive?.();
   const ensured = await withAcpRuntimeErrorBoundary({
     run: async () =>

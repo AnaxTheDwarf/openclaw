@@ -1,3 +1,4 @@
+import type { AcpSessionWriteOperations } from "../acp/runtime/session-meta-write.types.js";
 import type { AuthProfileRowRead, UserModelAuthProfile } from "../agents/auth-profiles/types.js";
 import type { NativeHookRelayStoreWorkerOperations } from "../agents/harness/native-hook-relay-store.worker-contract.js";
 import type { McpOAuthReadOperations } from "../agents/mcp-oauth-store.kernel.js";
@@ -106,7 +107,8 @@ import type { UserProfileWorkerOperations } from "./user-profiles.worker.js";
 export type OpenClawStateWorkerOpenPreparation = { type: "deviceIdentity"; identityKey: string };
 
 /** Commands share one physical shared-state actor; bindings belong to commands, not open input. */
-export type OpenClawStateWorkerOperations = WorktreeRetirementOperations &
+export type OpenClawStateWorkerOperations = AcpSessionWriteOperations &
+  WorktreeRetirementOperations &
   WorktreeRegistryReadOperations &
   SessionStateWorkerOperations &
   McpOAuthReadOperations &
