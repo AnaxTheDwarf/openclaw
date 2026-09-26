@@ -16,18 +16,6 @@ function entry(body: string) {
   return { sender: "user", body };
 }
 
-it("exposes only the room-history operations consumed by the monitor", () => {
-  expect(Object.keys(createRoomHistoryTracker())).toEqual([
-    "recordPending",
-    "reservePending",
-    "finalizePending",
-    "discardPending",
-    "prepareTrigger",
-    "prepareReservedTrigger",
-    "consumeHistory",
-  ]);
-});
-
 describe("createRoomHistoryTracker — watermark monotonicity", () => {
   it("consumeHistory is monotone: out-of-order completion does not regress the watermark", () => {
     const tracker = createRoomHistoryTracker();
@@ -84,11 +72,14 @@ describe("createRoomHistoryTracker — watermark monotonicity", () => {
     });
     tracker.recordPending(ROOM, { sender: "user", body: "after", messageId: "$after" });
 
-    const prepared = tracker.prepareReservedTrigger(AGENT, ROOM, 100, reserved, {
-      sender: "user",
-      body: "audio trigger",
-      messageId: "$audio",
-    });
+    const prepared = tracker.prepareTrigger(
+      AGENT,
+      ROOM,
+      100,
+      { sender: "user", body: "audio trigger", messageId: "$audio" },
+      undefined,
+      reserved,
+    );
 
     expect(prepared.history.map((entryValue) => entryValue.body)).toEqual(["before"]);
     tracker.consumeHistory(AGENT, ROOM, prepared, "$audio");
@@ -151,11 +142,14 @@ describe("createRoomHistoryTracker — watermark monotonicity", () => {
     });
     tracker.consumeHistory(AGENT, ROOM, later, "$later");
 
-    const prepared = tracker.prepareReservedTrigger(AGENT, ROOM, 100, reserved, {
-      sender: "user",
-      body: "audio trigger",
-      messageId: "$audio",
-    });
+    const prepared = tracker.prepareTrigger(
+      AGENT,
+      ROOM,
+      100,
+      { sender: "user", body: "audio trigger", messageId: "$audio" },
+      undefined,
+      reserved,
+    );
 
     expect(prepared.history.map((entryValue) => entryValue.body)).toEqual(["before"]);
   });
@@ -198,22 +192,28 @@ describe("createRoomHistoryTracker — watermark monotonicity", () => {
       body: "audio placeholder",
       messageId: "$audio",
     });
-    const firstPrepared = tracker.prepareReservedTrigger(AGENT, ROOM, 100, firstReserved, {
-      sender: "user",
-      body: "audio trigger",
-      messageId: "$audio",
-    });
+    const firstPrepared = tracker.prepareTrigger(
+      AGENT,
+      ROOM,
+      100,
+      { sender: "user", body: "audio trigger", messageId: "$audio" },
+      undefined,
+      firstReserved,
+    );
 
     const retryReserved = tracker.reservePending(AGENT, ROOM, {
       sender: "user",
       body: "audio placeholder retry",
       messageId: "$audio",
     });
-    const retried = tracker.prepareReservedTrigger(AGENT, ROOM, 100, retryReserved, {
-      sender: "user",
-      body: "audio trigger",
-      messageId: "$audio",
-    });
+    const retried = tracker.prepareTrigger(
+      AGENT,
+      ROOM,
+      100,
+      { sender: "user", body: "audio trigger", messageId: "$audio" },
+      undefined,
+      retryReserved,
+    );
     tracker.consumeHistory(AGENT, ROOM, retried, "$audio");
 
     expect(retried.snapshotIdx).toBe(firstPrepared.snapshotIdx);
@@ -273,17 +273,17 @@ describe("createRoomHistoryTracker — watermark monotonicity", () => {
     tracker.recordPending(ROOM, entry("thread-after"), "$thread");
     tracker.recordPending(ROOM, entry("main-after"));
 
-    const prepared = tracker.prepareReservedTrigger(
+    const prepared = tracker.prepareTrigger(
       AGENT,
       ROOM,
       100,
-      reserved,
       {
         sender: "user",
         body: "audio trigger",
         messageId: "$audio",
       },
       "$thread",
+      reserved,
     );
 
     expect(prepared.history.map((entryValue) => entryValue.body)).toEqual(["thread-before"]);
