@@ -49,6 +49,12 @@ asynchronous planning first, then reread authoritative rows inside the admitted
 transaction. Preserve FIFO order, coordinator custody, transaction/commit grants,
 and settlement of accepted write-capable work.
 
+Ingress queue pruning uses the shared-state writer. The host captures its cutoff
+and protected IDs before dispatch; SQLite selects and deletes overflow in bounded
+batches inside the existing transaction. Protected rows retain their original
+retention slots, and the caller receives the committed deletion count. Queue
+schemas, retention rules, and update behavior are unchanged.
+
 Published agent and shared-state database timers dispatch periodic WAL checkpoints
 and bounded page reclamation through those same writers. The existing timer keeps
 its cadence and page budget, releases writer custody between units, and installs

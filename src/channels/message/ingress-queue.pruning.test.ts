@@ -1,10 +1,14 @@
 // Pruning keeps durable ingress retention bounded without loading retained rows.
 import { describe, expect, it } from "vitest";
-import { trackSqliteStatementExecutions } from "../../../test/helpers/sqlite-statement-execution-counter.js";
+import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
 import type { DB as OpenClawStateKyselyDatabase } from "../../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
-import { createTestIngressQueue, withTempState } from "./ingress-drain.test-helpers.js";
+import {
+  createTestIngressQueue,
+  seedPendingBacklog,
+  withTempState,
+} from "./ingress-drain.test-helpers.js";
 
 type ChannelIngressTestDatabase = Pick<OpenClawStateKyselyDatabase, "channel_ingress_events">;
 
@@ -28,61 +32,58 @@ describe("channel ingress pruning", () => {
     });
   });
 
-  it("does not prune protected rows while enforcing max-entry limits", async () => {
+  it.each([
+    { ids: ["z", "a"], max: 1, protected: ["a"], retained: ["a", "z"] },
+    {
+      ids: ["a", "z", "\ufffd", "keep\u0000key", "keep\\u0000key"],
+      max: 0,
+      protected: [" a ", "\ud800", "keep\u0000key"],
+      retained: ["a", "keep\u0000key"],
+    },
+  ])("preserves protected IDs and their retention slots: $max", async (fixture) => {
     await withTempState(async (stateDir) => {
       const queue = createTestIngressQueue(stateDir, { now: () => 10 });
 
-      await queue.enqueue("z", { text: "first" });
-      await queue.enqueue("a", { text: "second" });
+      for (const id of fixture.ids) {
+        await queue.enqueue(id, { text: id });
+      }
 
-      expect(await queue.prune({ pendingMaxEntries: 1, protectIds: ["a"] })).toBe(0);
+      expect(
+        await queue.prune({ pendingMaxEntries: fixture.max, protectIds: fixture.protected }),
+      ).toBe(fixture.ids.length - fixture.retained.length);
       expect(
         (await queue.listPending({ limit: "all", orderBy: "id" })).map((row) => row.id),
-      ).toEqual(["a", "z"]);
+      ).toEqual(fixture.retained);
     });
   });
 
   it.each(["pending", "completed", "failed"] as const)(
-    "prunes %s overflow without materializing the retained prefix",
+    "prunes %s overflow through the worker and preserves the retained prefix",
     async (status) => {
       await withTempState(async (stateDir) => {
-        let clock = 1;
-        const queue = createTestIngressQueue(stateDir, { now: () => clock++ });
-
-        for (let index = 0; index < 520; index += 1) {
-          const id = String(index).padStart(4, "0");
-          await queue.enqueue(id, { text: String(index) });
-          if (status === "completed") {
-            await queue.complete(id);
-          } else if (status === "failed") {
-            await queue.fail(id, { reason: "fixture" });
-          }
-        }
-
+        const queue = createTestIngressQueue(stateDir);
+        seedPendingBacklog(stateDir, 520);
         const { db } = openOpenClawStateDatabase({ env: { OPENCLAW_STATE_DIR: stateDir } });
-        const reads = trackSqliteStatementExecutions(db, ["candidates"], (sql) =>
-          sql.startsWith("select") && sql.includes('from "channel_ingress_events"')
-            ? "candidates"
-            : null,
-        );
+        const kysely = getNodeSqliteKysely<ChannelIngressTestDatabase>(db);
+        executeSqliteQuerySync(db, kysely.updateTable("channel_ingress_events").set({ status }));
+        const host = observeHostDataSql({ ...process.env, OPENCLAW_STATE_DIR: stateDir });
         try {
           const pruneOptions = { [`${status}MaxEntries`]: 2 };
           expect(await queue.prune(pruneOptions)).toBe(518);
-          expect(reads.rowCounts.candidates).toBe(518);
           expect(await queue.prune(pruneOptions)).toBe(0);
-          expect(reads.rowCounts.candidates).toBe(518);
+          expect(host.queries).toEqual([]);
         } finally {
-          reads.restore();
+          host.restore();
         }
         expect(
           executeSqliteQuerySync(
             db,
-            getNodeSqliteKysely<ChannelIngressTestDatabase>(db)
+            kysely
               .selectFrom("channel_ingress_events")
               .select("event_id")
               .orderBy("event_id", "asc"),
           ).rows.map((row) => row.event_id),
-        ).toEqual(["0518", "0519"]);
+        ).toEqual(["evt-518", "evt-519"]);
       });
     },
   );

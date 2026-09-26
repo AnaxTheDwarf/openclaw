@@ -1,5 +1,14 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "src/channels/message/durable-receive.test.ts",
+  "src/channels/message/ingress-monitor.admission.test.ts",
+  "src/channels/message/ingress-monitor.capacity.test.ts",
+  "src/channels/message/ingress-monitor.inspection.test.ts",
+  "src/channels/message/ingress-monitor.restart-drain.test.ts",
+  "src/channels/message/ingress-monitor.shutdown.test.ts",
+  "src/channels/message/ingress-monitor.test.ts",
+  "src/channels/message/ingress-queue.pruning.test.ts",
+  "src/channels/message/ingress-queue.test.ts",
   "src/acp/runtime/session-meta-list.test.ts",
   "src/agents/session-placement-admission.caller-scope.test.ts",
   "src/trajectory/runtime-store-writer.test.ts",
@@ -770,6 +779,15 @@ const databaseWorkerCoreTestFileSet = new Set(databaseWorkerCoreTestFiles);
 
 // Preserve watch admission for consumers previously inferred into fast lanes.
 export const databaseWorkerCoreFormerFastKinds = new Map([
+  ["src/channels/message/durable-receive.test.ts", "unitFast"],
+  ["src/channels/message/ingress-monitor.admission.test.ts", "unitFast"],
+  ["src/channels/message/ingress-monitor.capacity.test.ts", "unitFast"],
+  ["src/channels/message/ingress-monitor.inspection.test.ts", "unitFast"],
+  ["src/channels/message/ingress-monitor.restart-drain.test.ts", "unitFast"],
+  ["src/channels/message/ingress-monitor.shutdown.test.ts", "unitFast"],
+  ["src/channels/message/ingress-monitor.test.ts", "unitFast"],
+  ["src/channels/message/ingress-queue.pruning.test.ts", "unitFast"],
+  ["src/channels/message/ingress-queue.test.ts", "unitFast"],
   ["test/e2e/qa-lab/runtime/gateway-loopback-lan-access.test.ts", "unitFast"],
   ["src/infra/outbound/bound-delivery-router.test.ts", "unitFast"],
   ["src/agents/harness/agent-end-side-effects.no-verbatim-capture.test.ts", "unitFast"],

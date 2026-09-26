@@ -17,7 +17,10 @@ import {
   openOpenClawStateDatabase,
   runOpenClawStateWriteTransaction,
 } from "../../state/openclaw-state-db.js";
-import { resolveChannelIngressStateEnv } from "./ingress-queue-client.js";
+import {
+  pruneChannelIngressThroughWorker,
+  resolveChannelIngressStateEnv,
+} from "./ingress-queue-client.js";
 import {
   FAILED_NULL_PAYLOAD_SENTINEL,
   baseRecord,
@@ -31,7 +34,6 @@ import {
   failChannelIngressInDatabase,
   listChannelIngressRowsInDatabase,
   listStaleChannelIngressClaimsInDatabase,
-  pruneChannelIngressInDatabase,
   purgeChannelIngressInDatabase,
   refreshChannelIngressClaimInDatabase,
   releaseChannelIngressInDatabase,
@@ -974,15 +976,9 @@ export function createChannelIngressQueue<
     ) {
       return 0;
     }
-    const database = openChannelIngressDatabase(options.stateDir);
-    return runOpenClawStateWriteTransaction(
-      (tx) =>
-        pruneChannelIngressInDatabase(tx.db, {
-          queueName,
-          options: { ...pruneOptions, protectIds },
-          now: current,
-        }),
-      { path: database.path },
+    return pruneChannelIngressThroughWorker(
+      { queueName, options: { ...pruneOptions, protectIds }, now: current },
+      options.stateDir,
     );
   };
 

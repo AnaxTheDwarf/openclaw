@@ -15,6 +15,7 @@ import type { WorktreeRegistryReadOperations } from "../agents/worktrees/registr
 import type { WorktreeRetirementOperations } from "../agents/worktrees/registry-retirement.worker.js";
 import type { AuditEventListQuery, AuditEventListPage } from "../audit/audit-event-types.js";
 import type { AuditWriterOperations } from "../audit/audit-event-writer.types.js";
+import type { pruneChannelIngressInDatabase } from "../channels/message/ingress-queue.kernel.js";
 import type { ClawInstallSchemaVersionRow } from "../claws/provenance-runtime-read.kernel.js";
 import type { readSqliteDatabaseBloat } from "../commands/doctor-db-bloat.read.js";
 import type { ConfigHealthPatch } from "../config/io.health-state.kernel.js";
@@ -211,6 +212,10 @@ export type OpenClawStateWorkerOperations = WorktreeRetirementOperations &
     };
     "agentProvenance.list": { input: undefined; output: AgentProvenance[] };
     "secrets.purge": { input: SecretStoreExpiryCutoffs; output: number };
+    "channelIngress.prune": {
+      input: Parameters<typeof pruneChannelIngressInDatabase>[1];
+      output: number;
+    };
     "secrets.writeForConfigRef": {
       input: SecretStoreConfigRefWrite;
       output: { name: string };

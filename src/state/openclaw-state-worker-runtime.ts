@@ -28,6 +28,7 @@ import {
 import { executeWorktreeRunLeaseCommand } from "../agents/worktrees/run-lease-store.worker.js";
 import { listAuditEventsInDatabase } from "../audit/audit-event-read.kernel.js";
 import { executeAuditWriterCommand } from "../audit/audit-event-writer.worker.js";
+import { pruneChannelIngressInDatabase } from "../channels/message/ingress-queue.kernel.js";
 import { readClawInstallSchemaVersionRows } from "../claws/provenance-runtime-read.kernel.js";
 import { readSqliteDatabaseBloat } from "../commands/doctor-db-bloat.read.js";
 import { readWorkshopMigrationRecordsInDatabase } from "../commands/doctor-skill-workshop-read.kernel.js";
@@ -536,6 +537,12 @@ export function executeSharedStateCommand(
   }
   if (command.type === "secrets.purge") {
     return purgeExpiredSecretStoreEntriesInDatabase(command.input, writeOptions);
+  }
+  if (command.type === "channelIngress.prune") {
+    return runOpenClawStateWriteTransaction(
+      ({ db }) => pruneChannelIngressInDatabase(db, command.input),
+      writeOptions,
+    );
   }
   if (command.type === "secrets.writeForConfigRef") {
     return writeSecretStoreEntryForConfigRefInDatabase(command.input, writeOptions, (stage) =>
