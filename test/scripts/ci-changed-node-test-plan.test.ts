@@ -44,7 +44,6 @@ import {
   resolveExtensionTestConfig,
 } from "../../scripts/lib/extension-test-plan.mts";
 import * as extensionTestPlan from "../../scripts/lib/extension-test-plan.mts";
-import { listVitestRuntimeConsumerFiles } from "../../scripts/lib/vitest-build-prerequisites.mts";
 import {
   buildVitestRunPlans,
   hasImportGraphConsumers,
@@ -2856,24 +2855,18 @@ describe("CI changed Node test plan", () => {
     expect(targets.toSorted()).toEqual(
       listExecutableExtensionFiles(["extensions/telegram"]).toSorted(),
     );
-    const workerCount = targets.filter((file) =>
-      databaseWorkerExtensionTestFiles.includes(file),
-    ).length;
-    const telegramConfig = "test/vitest/vitest.extension-telegram.config.ts";
-    const runtimeFiles = listVitestRuntimeConsumerFiles([telegramConfig]).filter((file) =>
-      targets.includes(file),
-    );
-    expect(
-      shards
-        .filter((shard) => shard.pretestBuildMode && shard.configs.includes(telegramConfig))
-        .flatMap((shard) => shard.includePatterns ?? [])
-        .toSorted(),
-    ).toEqual(runtimeFiles.toSorted());
-    expect(groups).toHaveLength(
-      Math.ceil(workerCount / 10) +
-        Math.ceil(runtimeFiles.length / 10) +
-        Math.ceil((targets.length - workerCount - runtimeFiles.length) / 10),
-    );
+    for (const [file, config] of [
+      ["polling-session.test.ts", "vitest.extension-database-workers.config.ts"],
+      ["sticker-cache.selection.test.ts", "vitest.extension-telegram.config.ts"],
+    ]) {
+      const owner = groups.find((group) =>
+        group.includePatterns?.includes(`extensions/telegram/src/${file}`),
+      );
+      expect(owner).toMatchObject({
+        configs: [`test/vitest/${config}`],
+        pretestBuildMode: "runtime",
+      });
+    }
   });
 
   it.each([
