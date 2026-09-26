@@ -10,6 +10,7 @@ import {
   withPluginRuntimePluginScope,
   withPluginRuntimeRegistryScope,
 } from "./runtime/gateway-request-scope.js";
+import { createPluginToolLlmBinding, type PluginToolLlmBinding } from "./tool-llm-binding.js";
 import { copyPluginToolMeta } from "./tool-metadata.js";
 import type { OpenClawPluginToolContext } from "./types.js";
 
@@ -60,6 +61,7 @@ export function bindPluginToolCallbacks(
   entry: PluginToolRegistration,
   registry: PluginRegistry,
   tool: AnyAgentTool,
+  llmBinding: PluginToolLlmBinding,
 ): AnyAgentTool {
   const record = registry.plugins.find((candidate) => candidate.id === entry.pluginId);
   const authority = capturePluginLifecycleAuthority(registry, record, { scopedRuntime: true });
@@ -75,7 +77,9 @@ export function bindPluginToolCallbacks(
       invoke(() => {
         const [toolCallId, params, signal, onUpdate] = args;
         const execute = (executionSignal?: AbortSignal) =>
-          tool.execute(toolCallId, params, executionSignal, onUpdate);
+          llmBinding.run(executionSignal, (boundSignal) =>
+            tool.execute(toolCallId, params, boundSignal, onUpdate),
+          );
         return signal ? runWithTrackedCancellation(signal, execute) : execute();
       }),
     ...(prepare
@@ -169,8 +173,11 @@ export function createPluginToolFactoryResolver(logError: (message: string) => v
       let resolved: ReturnType<PluginToolRegistration["factory"]> = null;
       let failed = false;
       const factoryStartedAt = Date.now();
+      const llmBinding = createPluginToolLlmBinding({ context: ctx, pluginId: entry.pluginId });
       try {
-        resolved = runWithPluginToolScope(entry, registry, () => entry.factory(ctx));
+        resolved = runWithPluginToolScope(entry, registry, () =>
+          entry.factory({ ...ctx, llm: llmBinding.llm }),
+        );
       } catch (err) {
         failed = true;
         // Only the config producer can confirm its diagnostic was emitted;
@@ -195,7 +202,7 @@ export function createPluginToolFactoryResolver(logError: (message: string) => v
         resultCount: failed || !resolved ? 0 : Array.isArray(resolved) ? resolved.length : 1,
         optional: entry.optional,
       });
-      return { resolved, failed };
+      return { resolved, failed, llmBinding };
     },
     report() {
       const last = factoryTimings.at(-1);

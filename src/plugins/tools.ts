@@ -39,6 +39,7 @@ import {
   createPluginToolFactoryResolver,
 } from "./tool-factory-runtime.js";
 import { createPluginToolAllowlist, type PluginToolAllowlist } from "./tool-grant-allowlist.js";
+import type { PluginToolLlmBinding } from "./tool-llm-binding.js";
 import { setPluginToolMeta } from "./tool-metadata.js";
 import type { OpenClawPluginToolContext } from "./types.js";
 
@@ -70,6 +71,7 @@ function inspectPluginTool(
   clientCaps: ReadonlySet<string>,
   entry: PluginToolRegistration,
   registry: PluginRegistry,
+  llmBinding: PluginToolLlmBinding,
 ): { tool: AnyAgentTool } | { error: string } | null {
   try {
     if (!isRecord(tool)) {
@@ -93,7 +95,7 @@ function inspectPluginTool(
             : undefined;
     return error
       ? { error }
-      : { tool: bindPluginToolCallbacks(entry, registry, tool as AnyAgentTool) };
+      : { tool: bindPluginToolCallbacks(entry, registry, tool as AnyAgentTool, llmBinding) };
   } catch (error) {
     return { error: formatErrorMessage(error) };
   }
@@ -465,7 +467,7 @@ function resolvePluginToolsFromRegistry(
       if (factoryResult.failed) {
         continue;
       }
-      const { resolved } = factoryResult;
+      const { resolved, llmBinding } = factoryResult;
       if (!resolved) {
         if (declaredNames.length > 0) {
           context.logger.debug?.(
@@ -522,7 +524,14 @@ function resolvePluginToolsFromRegistry(
         ) {
           continue;
         }
-        const inspected = inspectPluginTool(toolRaw, toolName, clientCaps, entry, owner.registry);
+        const inspected = inspectPluginTool(
+          toolRaw,
+          toolName,
+          clientCaps,
+          entry,
+          owner.registry,
+          llmBinding,
+        );
         if (!inspected) {
           continue;
         }

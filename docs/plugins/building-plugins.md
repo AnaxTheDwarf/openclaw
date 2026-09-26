@@ -167,6 +167,12 @@ local proof.
     Use `definePluginEntry` for non-channel plugins. Channel plugins use
     `defineChannelPluginEntry` from `openclaw/plugin-sdk/core` instead.
 
+    A registered tool factory receives host-bound runtime capabilities. For
+    model inference during `execute`, prefer `ctx.llm.complete(...)` from the
+    factory context over `api.runtime.llm.complete(...)`. The factory capability
+    inherits the active session agent, cannot override the agent or model, and
+    is revoked when the invocation closes. See [Tool Plugins](/plugins/tool-plugins#optional-and-factory-tools).
+
   </Step>
 
   <Step title="Test the runtime">

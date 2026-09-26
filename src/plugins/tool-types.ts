@@ -6,6 +6,7 @@ import type { ConversationReadInvocationOrigin } from "../channels/plugins/conve
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { HookEntry } from "../hooks/types.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
+import type { LlmCompleteParams, LlmCompleteResult } from "./runtime/types-core.js";
 
 export type OpenClawPluginActiveModelContext = {
   provider?: string;
@@ -18,8 +19,12 @@ export type OpenClawPluginToolDelivery = {
   send: (params: { text?: string; mediaUrl?: string }) => Promise<void>;
 };
 
-/** Trusted execution context passed to plugin-owned agent tool factories. */
-export type OpenClawPluginToolContext = {
+/** LLM completion capability bound to the active tool invocation and session agent. */
+type OpenClawPluginToolLlm = {
+  complete: (params: LlmCompleteParams) => Promise<LlmCompleteResult>;
+};
+
+type OpenClawPluginToolContextBase = {
   config?: OpenClawConfig;
   /** Active runtime-resolved config snapshot when one is available. */
   runtimeConfig?: OpenClawConfig;
@@ -59,6 +64,11 @@ export type OpenClawPluginToolContext = {
   deliveryContext?: DeliveryContext;
   /** Host-bound current-route delivery. Retained copies fail after the owning turn closes. */
   delivery?: OpenClawPluginToolDelivery;
+  /**
+   * Host-bound completion for the active tool invocation. Prefer
+   * `OpenClawPluginToolContext<2>` when this capability is required.
+   */
+  llm?: OpenClawPluginToolLlm;
   /** Trusted platform-native conversation id for the active inbound turn. */
   nativeChannelId?: string;
   /** Trusted sender id from inbound context (runtime-provided, not tool args). */
@@ -77,6 +87,19 @@ export type OpenClawPluginToolContext = {
    */
   oneShotCliRun?: boolean;
 };
+
+/**
+ * Trusted execution context passed to plugin-owned agent tool factories.
+ * Version 2 requires host-bound LLM completion and its session identity.
+ */
+export type OpenClawPluginToolContext<Version extends 1 | 2 = 1> = OpenClawPluginToolContextBase &
+  (Version extends 2
+    ? {
+        agentId: string;
+        sessionKey: string;
+        llm: OpenClawPluginToolLlm;
+      }
+    : object);
 
 export type OpenClawPluginToolFactory = (
   ctx: OpenClawPluginToolContext,

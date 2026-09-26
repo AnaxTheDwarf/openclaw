@@ -161,6 +161,16 @@ account, thread, and local-media policy; plugins cannot retarget this helper,
 and retained copies stop working after the turn closes. The helper is unavailable
 for channels whose delivery is owned by a Gateway transport.
 
+Factories that need model inference should use `toolContext.llm?.complete(...)`.
+This completion is bound to the active tool invocation's session and agent, so
+the plugin must not pass `agentId` or choose a different model. It fails closed
+when the host cannot establish the session binding, after the tool invocation
+ends, or when a retained callback runs later. Use
+`OpenClawPluginToolContext<2>` to describe code that requires the bound
+capability; keep a missing-capability check when supporting older OpenClaw
+hosts. The host returns model text unchanged. Parsing and semantic validation
+of that text remain the plugin's responsibility.
+
 A factory may return a core `AgentTool`, an array of them, or `null` or
 `undefined` to opt out, as the example above does. When it returns a concrete
 tool, that tool uses the core runtime signature
