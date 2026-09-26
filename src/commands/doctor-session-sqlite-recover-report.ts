@@ -64,7 +64,10 @@ export async function recoverDoctorSessionSqliteTargets(params: {
   historicalArchiveStores?: ReadonlySet<string>;
   validateTarget: SessionSqliteRecoverTargetValidator;
 }): Promise<DoctorSessionSqliteReport> {
-  const trustedTargets = resolveRecoverTargets(params.targets, params.env);
+  const trustedTargets = params.targets.map((target) => ({
+    ...target,
+    sqlitePath: resolveTargetSqlitePath(target, params.env),
+  }));
   const failedRun = findLatestFailedSessionSqliteMigrationManifest(params.env, trustedTargets);
   if (!failedRun) {
     const recoveredCorruptTargets = await withAgentDatabaseMaintenanceLease(
@@ -356,16 +359,6 @@ function isCanonicalAgentIndexCorruptionError(error: unknown): boolean {
     return false;
   }
   return CANONICAL_AGENT_INDEX_NAMES.some((indexName) => error.message.includes(indexName));
-}
-
-function resolveRecoverTargets(
-  targets: readonly SessionStoreTarget[],
-  env: NodeJS.ProcessEnv,
-): SessionSqliteMigrationTargetInput[] {
-  return targets.map((target) => ({
-    ...target,
-    sqlitePath: resolveTargetSqlitePath(target, env),
-  }));
 }
 
 function createSyntheticRecoverTargetReport(
