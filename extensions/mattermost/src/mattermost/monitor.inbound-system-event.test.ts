@@ -11,6 +11,7 @@ import {
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
+  observeChannelIngressQueueWrite,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import { DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS } from "openclaw/plugin-sdk/channel-outbound";
 import {
@@ -739,26 +740,25 @@ describe("mattermost inbound user posts", () => {
       activeProviders.push(provider);
       return provider;
     };
-    const send = async (provider: Awaited<ReturnType<typeof startProvider>>) => {
+    const send = async (provider: Awaited<ReturnType<typeof startProvider>>, settle = true) => {
+      const released = settle ? observeChannelIngressQueueWrite(queue, "release") : undefined;
       await emitMattermostChannelPost(provider.socket, {
         id: "post-abandon-retry",
         message: "retry me",
       });
+      await released;
     };
     const pendingAttempt = async (attempts: number) => {
-      let observed: Awaited<ReturnType<typeof queue.listPending>>[number] | undefined;
-      await vi.waitFor(async () => {
-        const pending = await queue.listPending({ limit: "all" });
-        expect(pending).toEqual([
-          expect.objectContaining({
-            id: "post-abandon-retry",
-            attempts,
-            lastAttemptAt: expect.any(Number),
-            lastError: "turn-abandoned",
-          }),
-        ]);
-        observed = pending[0];
-      });
+      const pending = await queue.listPending({ limit: "all" });
+      expect(pending).toEqual([
+        expect.objectContaining({
+          id: "post-abandon-retry",
+          attempts,
+          lastAttemptAt: expect.any(Number),
+          lastError: "turn-abandoned",
+        }),
+      ]);
+      const observed = pending[0];
       const lastAttemptAt = observed?.lastAttemptAt;
       if (lastAttemptAt === undefined) {
         throw new Error(`Missing Mattermost retry timestamp for attempt ${attempts}`);
@@ -775,7 +775,7 @@ describe("mattermost inbound user posts", () => {
 
       vi.setSystemTime(firstAttempt.lastAttemptAt + 999);
       const blocked = await startProvider();
-      await send(blocked);
+      await send(blocked, false);
       await vi.advanceTimersByTimeAsync(0);
       expect(mockState.dispatchInboundMessage).toHaveBeenCalledTimes(1);
       await blocked.stop();
@@ -814,7 +814,7 @@ describe("mattermost inbound user posts", () => {
 
       vi.setSystemTime(beyondAttempt.lastAttemptAt + 1_000);
       const blockedRestart = await startProvider();
-      await send(blockedRestart);
+      await send(blockedRestart, false);
       await vi.advanceTimersByTimeAsync(0);
       expect(mockState.dispatchInboundMessage).toHaveBeenCalledTimes(4);
       await blockedRestart.stop();

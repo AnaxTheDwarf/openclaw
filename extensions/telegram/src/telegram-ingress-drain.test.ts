@@ -157,11 +157,7 @@ describe("resolveTelegramIngressNonRetryableFailure", () => {
 });
 
 function deferred<T = void>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 
 describe("createTelegramIngressMonitor", () => {
@@ -443,7 +439,8 @@ describe("createTelegramIngressMonitor", () => {
       });
 
       monitor.start();
-      await vi.waitFor(() => expect(participant.current).toBeDefined());
+      await monitor.waitForIdle();
+      expect(participant.current).toBeDefined();
       expect(await queue.listClaims()).toHaveLength(1);
       participant.current?.settle({
         kind: "failed-retryable",
@@ -494,7 +491,8 @@ describe("createTelegramIngressMonitor", () => {
       });
 
       monitor.start();
-      await vi.waitFor(() => expect(participant.current).toBeDefined());
+      await monitor.waitForIdle();
+      expect(participant.current).toBeDefined();
       participant.current?.settle({
         kind: "failed-retryable",
         error: await createError(),
@@ -538,7 +536,8 @@ describe("createTelegramIngressMonitor", () => {
         });
 
         monitor.start();
-        await vi.waitFor(() => expect(participant.current).toBeDefined());
+        await monitor.waitForIdle();
+        expect(participant.current).toBeDefined();
         await monitor.stop();
         expect(await queue.listClaims()).toEqual([]);
         expect(await queue.listPending({ limit: "all" })).toMatchObject([
@@ -706,7 +705,8 @@ describe("createTelegramIngressMonitor", () => {
       });
 
       monitor.start();
-      await vi.waitFor(() => expect(participant.current).toBeDefined());
+      await monitor.waitForIdle();
+      expect(participant.current).toBeDefined();
       await monitor.stop();
       participant.current?.settle({
         kind: "failed-retryable",

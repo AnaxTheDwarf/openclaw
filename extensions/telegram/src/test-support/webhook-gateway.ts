@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
+import { createChannelIngressQueueForTests } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import {
   createEmptyPluginRegistry,
   setActivePluginRegistry,
@@ -48,14 +49,21 @@ export function createTelegramWebhookTestGateway(options: {
       res.end();
     }
   });
-  const startWebhook = async (params: Parameters<StartWebhook>[0]) => ({
-    ...(await production({
-      ...params,
-      publicUrl:
-        params.publicUrl ?? webhookUrl(getServerPort(server), params.path ?? "/telegram-webhook"),
-    })),
-    server,
-  });
+  const startWebhook = async (params: Parameters<StartWebhook>[0]) => {
+    // Start the real writer before tests advance transport watchdog clocks.
+    await createChannelIngressQueueForTests({
+      channelId: "telegram",
+      ...options.queueScope(),
+    }).prune({ pendingMaxEntries: Number.MAX_SAFE_INTEGER });
+    return {
+      ...(await production({
+        ...params,
+        publicUrl:
+          params.publicUrl ?? webhookUrl(getServerPort(server), params.path ?? "/telegram-webhook"),
+      })),
+      server,
+    };
+  };
 
   return {
     server,

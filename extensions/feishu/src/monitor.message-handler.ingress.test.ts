@@ -529,6 +529,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       const first = createIntegratedIngress();
       first.start();
       await first.invokeWebhook(event);
+      await first.waitForIdle();
       const firstAttempt = await pendingAttempt(1);
       expect(handleMessage).toHaveBeenCalledTimes(1);
       await first.stop();
@@ -537,6 +538,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       const blocked = createIntegratedIngress();
       blocked.start();
       await blocked.invokeWebhook(event);
+      await blocked.waitForIdle();
       await vi.advanceTimersByTimeAsync(0);
       expect(handleMessage).toHaveBeenCalledTimes(1);
       await blocked.stop();
@@ -545,6 +547,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       const second = createIntegratedIngress();
       second.start();
       await second.invokeWebhook(event);
+      await second.waitForIdle();
       const secondAttempt = await pendingAttempt(2);
       expect(handleMessage).toHaveBeenCalledTimes(2);
       await second.stop();
@@ -564,6 +567,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       const threshold = createIntegratedIngress();
       threshold.start();
       await threshold.invokeWebhook(event);
+      await threshold.waitForIdle();
       const thresholdAttempt = await pendingAttempt(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS);
       expect(handleMessage).toHaveBeenCalledTimes(3);
       await threshold.stop();
@@ -572,6 +576,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       const beyond = createIntegratedIngress();
       beyond.start();
       await beyond.invokeWebhook(event);
+      await beyond.waitForIdle();
       const beyondAttempt = await pendingAttempt(DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS + 1);
       expect(handleMessage).toHaveBeenCalledTimes(4);
       await beyond.stop();
@@ -580,6 +585,7 @@ describe("Feishu durable ingress debounce lifecycle", () => {
       const blockedRestart = createIntegratedIngress();
       blockedRestart.start();
       await blockedRestart.invokeWebhook(event);
+      await blockedRestart.waitForIdle();
       await vi.advanceTimersByTimeAsync(0);
       expect(handleMessage).toHaveBeenCalledTimes(4);
       await blockedRestart.stop();

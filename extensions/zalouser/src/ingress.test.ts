@@ -185,10 +185,12 @@ describe("Zalouser durable ingress", () => {
       });
       await ingress.receive(createRawZalouserMessage({ msgId: "lane-1" }));
       await ingress.receive(createRawZalouserMessage({ msgId: "lane-2" }));
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
+      await ingress.waitForIdle();
+      expect(dispatch).toHaveBeenCalledTimes(1);
 
       await firstLifecycle?.onAdopted();
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2));
+      await ingress.waitForIdle();
+      expect(dispatch).toHaveBeenCalledTimes(2);
       await ingress.stop();
     });
   });
@@ -196,6 +198,8 @@ describe("Zalouser durable ingress", () => {
   it("dispatches another conversation while a deferred delivery is still active", async () => {
     await withZalouserIngressTestQueue(async (queue) => {
       let firstLifecycle: ZalouserIngressLifecycle | undefined;
+      const firstStarted = Promise.withResolvers<void>();
+      const secondAdopted = Promise.withResolvers<void>();
       let releaseFirst = () => {};
       const firstGate = new Promise<void>((resolve) => {
         releaseFirst = resolve;
@@ -205,10 +209,12 @@ describe("Zalouser durable ingress", () => {
           if (message.msgId === "lane-active") {
             firstLifecycle = lifecycle;
             lifecycle.onDeferred();
+            firstStarted.resolve();
             await firstGate;
             return;
           }
           await lifecycle.onAdopted();
+          secondAdopted.resolve();
         },
       );
       const ingress = createZalouserIngressMonitor({
@@ -221,12 +227,14 @@ describe("Zalouser durable ingress", () => {
       await ingress.receive(
         createRawZalouserMessage({ msgId: "lane-active", senderId: "sender-1" }),
       );
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+      await firstStarted.promise;
+      expect(dispatch).toHaveBeenCalledOnce();
 
       await ingress.receive(
         createRawZalouserMessage({ msgId: "lane-independent", senderId: "sender-2" }),
       );
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2));
+      await secondAdopted.promise;
+      expect(dispatch).toHaveBeenCalledTimes(2);
       await waitForZalouserIngressVerdict(queue, "lane-independent", "completed");
 
       releaseFirst();
@@ -292,7 +300,8 @@ describe("Zalouser durable ingress", () => {
         dispatch,
       });
       await ingress.receive(createRawZalouserMessage({ msgId: "deferred-stop" }));
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+      await ingress.waitForIdle();
+      expect(dispatch).toHaveBeenCalledOnce();
       expect(await queue.listClaims()).toHaveLength(1);
 
       await ingress.stop();
