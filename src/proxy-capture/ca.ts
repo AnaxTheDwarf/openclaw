@@ -12,6 +12,8 @@ const DEBUG_PROXY_CA_GENERATION_TIMEOUT_MS = 30_000;
 const LOCAL_PROXY_CERT_GENERATION_TIMEOUT_MS = 30_000;
 const LOCAL_PROXY_DIR_MODE = 0o700;
 const LOCAL_PROXY_PRIVATE_KEY_MODE = 0o600;
+// Host identity lives in SAN; keep the legacy CN bounded for OpenSSL compatibility.
+const LOCAL_PROXY_LEAF_COMMON_NAME = "OpenClaw Local Proxy";
 
 function buildLocalProxyCaOpenSslConfig(commonName: string): string {
   return [
@@ -209,7 +211,16 @@ async function generateLocalProxyLeafQueued(params: {
     );
     await runExec(
       openssl,
-      ["req", "-new", "-key", leafKeyPath, "-subj", `/CN=${params.hostname}`, "-out", csrPath],
+      [
+        "req",
+        "-new",
+        "-key",
+        leafKeyPath,
+        "-subj",
+        `/CN=${LOCAL_PROXY_LEAF_COMMON_NAME}`,
+        "-out",
+        csrPath,
+      ],
       { logOutput: false, timeoutMs: LOCAL_PROXY_CERT_GENERATION_TIMEOUT_MS },
     );
     await runExec(
