@@ -44,12 +44,48 @@ describe("terminal auth resolution", () => {
       );
 
       expect(resolved.action).toBe("complete");
-      expect(onSuccessfulAuthProfile).toHaveBeenCalledExactlyOnceWith(authProfileId);
+      expect(onSuccessfulAuthProfile).toHaveBeenCalledExactlyOnceWith(authProfileId, undefined);
       if (resolved.action === "complete") {
         expect(resolved.result.meta.agentMeta).not.toHaveProperty("authProfileId");
       }
     },
   );
+
+  it("reports the OAuth mode from the completed attempt's profile snapshot", async () => {
+    const text = "Synthetic model answer.";
+    const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text }] });
+    const onSuccessfulAuthProfile = vi.fn();
+    await resolveEmbeddedRunTerminal(
+      makeTerminalInput({
+        attempt: makeEmbeddedRunnerAttempt({
+          assistantTexts: [text],
+          lastAssistant: assistant,
+          currentAttemptAssistant: assistant,
+        }),
+        attemptAssistant: assistant,
+        payloadsWithToolMedia: [{ text }],
+        authProfileId: "openai:synthetic-oauth",
+        attemptAuthProfileStore: {
+          version: 1,
+          profiles: {
+            "openai:synthetic-oauth": {
+              type: "oauth",
+              provider: "openai",
+              access: "synthetic-access",
+              refresh: "synthetic-refresh",
+              expires: 4_102_444_800_000,
+            },
+          },
+        },
+        runParams: { authProfileStateMode: "read-only", onSuccessfulAuthProfile },
+      }),
+    );
+
+    expect(onSuccessfulAuthProfile).toHaveBeenCalledExactlyOnceWith(
+      "openai:synthetic-oauth",
+      "oauth",
+    );
+  });
 
   it.each([
     {

@@ -37,7 +37,7 @@ import { runWithChatAbortExecution } from "../chat-abort-lifecycle-internal.js";
 import { discardPreparedInboundMedia } from "../chat-attachments.js";
 import { errorShapeFromError } from "../error-shape.js";
 import { getGatewayLocalUserIngress } from "../local-user-ingress.js";
-import { ADMIN_SCOPE } from "../operator-scopes.js";
+import { ADMIN_SCOPE, hasGatewayAdminScope } from "../operator-scopes.js";
 import { createAgentRunModelSelectionHandler } from "../server-methods/agent-run-model-selection.js";
 import { resolveSessionRuntimeCwd } from "../server-methods/agent-session-reset.js";
 import { resolveChatSendCallerContext } from "../server-methods/gateway-client-identity.js";
@@ -465,6 +465,8 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
                 config: replyDispatchRuntime.config,
                 pluginGeneration: replyDispatchRuntime.pluginGeneration,
               },
+              includeModelRunAuthProfile:
+                params.isOneShotModelRun && hasGatewayAdminScope(params.client),
               cronCreatorAuthority: prepared.cronCreatorAuthority,
               ingressOpts: {
                 skillLibraryAuthoring,
@@ -512,6 +514,13 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
                 lane: params.request.lane,
                 swarmExecutionLane: params.swarmExecutionLane,
                 modelRun: params.request.modelRun === true,
+                requiredModelRunAuthProfiles: params.request.requiredOAuthProfileIds,
+                requiredModelRunModel: params.request.requiredOAuthProfileIds
+                  ? {
+                      provider: prepared.effectiveProviderOverride,
+                      model: prepared.effectiveModelOverride,
+                    }
+                  : undefined,
                 promptMode: params.request.promptMode,
                 extraSystemPrompt: params.request.extraSystemPrompt,
                 bootstrapContextMode: params.request.bootstrapContextMode,

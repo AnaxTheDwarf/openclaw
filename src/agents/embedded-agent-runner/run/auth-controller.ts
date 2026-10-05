@@ -120,6 +120,7 @@ export function createEmbeddedRunAuthController(params: {
   authStore: AuthProfileStore;
   authStorage: RuntimeApiKeySink;
   profileCandidates: Array<string | undefined>;
+  requiredOAuthProfileIds?: readonly string[];
   lockedProfileId?: string;
   initialThinkLevel: ThinkLevel;
   attemptedThinking: Set<ThinkLevel>;
@@ -469,6 +470,16 @@ export function createEmbeddedRunAuthController(params: {
   };
 
   const applyApiKeyInfo = async (candidate?: string, attemptIndex?: number): Promise<void> => {
+    if (params.requiredOAuthProfileIds) {
+      if (
+        !candidate ||
+        !params.requiredOAuthProfileIds.includes(candidate) ||
+        params.authStore.profiles[candidate]?.type !== "oauth" ||
+        params.authStore.profiles[candidate]?.provider !== params.provider
+      ) {
+        throw new Error("Constrained model run cannot materialize a non-approved OAuth profile.");
+      }
+    }
     const preparedModel = await params.prepareModelForAuthProfile?.(candidate, attemptIndex);
     const apiKeyInfo = await getApiKeyForModelCore({
       model: preparedModel?.runtimeModel ?? state.models.runtime,
@@ -477,8 +488,12 @@ export function createEmbeddedRunAuthController(params: {
       store: params.authStore,
       agentDir: params.agentDir,
       workspaceDir: params.workspaceDir,
-      lockedProfile: candidate != null && candidate === params.lockedProfileId,
-      allowAuthProfileFallback: preparedModel?.allowAuthProfileFallback,
+      lockedProfile:
+        params.requiredOAuthProfileIds !== undefined ||
+        (candidate != null && candidate === params.lockedProfileId),
+      allowAuthProfileFallback: params.requiredOAuthProfileIds
+        ? false
+        : preparedModel?.allowAuthProfileFallback,
       secretSentinels: true,
     });
     if (

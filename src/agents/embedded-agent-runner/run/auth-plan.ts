@@ -118,6 +118,67 @@ export async function prepareEmbeddedRunAuthPlan(params: {
       : requestedProfileId;
   const createAuthPreparation = (): PreparedAgentRuntimeAuth => {
     const harness = params.getAgentHarness();
+    const requiredProfiles = runParams.requiredModelRunAuthProfiles;
+    if (requiredProfiles) {
+      if (
+        !runParams.modelRun ||
+        harness.id !== "openclaw" ||
+        params.nativeSessionRuntime?.auth === "native" ||
+        requiredProfiles.length === 0
+      ) {
+        throw new Error(
+          "Constrained model run requires OpenClaw-owned stored OAuth authentication.",
+        );
+      }
+      const attempts = requiredProfiles.map((profileId) => {
+        const credential = attemptAuthProfileStore.profiles[profileId];
+        if (credential?.type !== "oauth" || credential.provider !== params.provider) {
+          throw new Error(
+            `Required OAuth profile "${profileId}" is unavailable for ${params.provider}.`,
+          );
+        }
+        const prepared = prepareAgentRuntimeAuth({
+          provider: params.provider,
+          modelId: params.modelId,
+          modelApi: params.model.api,
+          modelBaseUrl: params.model.baseUrl,
+          requestTransportOverrides: params.requestStreamTransportOverrides,
+          config: runParams.config,
+          env: process.env,
+          agentId: runParams.agentId,
+          agentDir: params.agentDir,
+          workspaceDir: params.workspaceDir,
+          metadataSnapshot: params.preparedModelRuntime?.metadataSnapshot,
+          authProfileStore: attemptAuthProfileStore,
+          sessionAuthProfileId: profileId,
+          sessionAuthProfileSource: "user",
+          allowAuthProfileFallback: false,
+          harnessId: harness.id,
+          harnessRuntime: harness.id,
+          harnessAuthBootstrap: harness.authBootstrap,
+          allowHarnessAuthProfileForwarding: true,
+        });
+        const [attempt] = prepared.attempts;
+        if (
+          prepared.attempts.length !== 1 ||
+          attempt?.kind !== "profile" ||
+          attempt.profileId !== profileId ||
+          attempt.plan.forwardedAuthProfileId !== profileId ||
+          attempt.plan.selectedAuthMode !== "oauth" ||
+          attempt.plan.forwardedAuthProfileCandidateIds?.some((id) => id !== profileId)
+        ) {
+          throw new Error(
+            `Required OAuth profile "${profileId}" cannot own its physical auth route.`,
+          );
+        }
+        return attempt;
+      });
+      const firstAttempt = attempts[0];
+      if (!firstAttempt) {
+        throw new Error("Constrained model run has no permitted OAuth profile.");
+      }
+      return { plan: firstAttempt.plan, attempts };
+    }
     if (params.nativeSessionRuntime?.auth === "native") {
       // Only the binding-owned connection bypasses host credentials and routes;
       // preserving a native model alone still uses the normal auth planner below.

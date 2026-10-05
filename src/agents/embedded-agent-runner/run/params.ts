@@ -168,6 +168,9 @@ export type RunEmbeddedAgentParams = {
   modelThinkingCapability?: PreparedModelThinkingCapability;
   /** Effective model fallback chain for this session attempt. Undefined uses config defaults. */
   modelFallbacksOverride?: string[];
+  /** Gateway model.run credential boundary, checked before any provider call. */
+  requiredModelRunAuthProfiles?: string[];
+  requiredModelRunModel?: { provider?: string; model?: string };
   /** Prepared fallback availability fact shared by selection and failure reporting. */
   modelFallbackAvailability?: ModelFallbackAvailability;
   /** Session-pinned embedded harness id. Prevents runtime hot-switching. */

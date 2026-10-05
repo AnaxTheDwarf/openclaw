@@ -320,6 +320,7 @@ export const AgentParamsSchema = closedObject({
   // bundle MCP resources after the run instead of keeping them warm.
   cleanupBundleMcpOnRunEnd: Type.Optional(Type.Boolean()),
   modelRun: Type.Optional(Type.Boolean()),
+  requiredOAuthProfileIds: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, maxItems: 4 })),
   promptMode: Type.Optional(
     Type.Union([Type.Literal("full"), Type.Literal("minimal"), Type.Literal("none")]),
   ),

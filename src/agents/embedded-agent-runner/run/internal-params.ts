@@ -54,7 +54,10 @@ export type RunEmbeddedAgentInternalParams = RunEmbeddedAgentParams & {
   onContextAccountingEvent?: (event: EmbeddedContextAccountingEvent) => void;
   onSuccessfulAuthBinding?: (binding: AgentExecutionAuthBinding) => void;
   /** Maintenance needs the winning profile, not native runtime artifact capture. */
-  onSuccessfulAuthProfile?: (profileId: string | undefined) => void;
+  onSuccessfulAuthProfile?: (
+    profileId: string | undefined,
+    mode?: "api_key" | "oauth" | "token",
+  ) => void;
   authProfileStateMode?: "read-write" | "read-only";
   /** Prepare only the requested candidate with this runtime; fallbacks keep their own policy. */
   agentHarnessRuntimePreparationHint?: string;

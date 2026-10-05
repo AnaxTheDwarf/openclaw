@@ -985,6 +985,26 @@ describe("capability cli", () => {
     expect(mocks.callGateway).not.toHaveBeenCalled();
   });
 
+  it("sends a UTF-8 SQL file in a tool-free Gateway model run with a bounded wait", async () => {
+    const filePath = path.join(tempDirs.make("openclaw-model-run-sql-"), "query.sql");
+    const content = `SELECT name FROM widgets WHERE active = true;\n${"-- context\n".repeat(20_000)}`;
+    await fs.writeFile(filePath, content);
+
+    await runModelProbe("--file", filePath, "--gateway");
+
+    const call = firstGatewayCall();
+    expect(call?.params).toMatchObject({
+      modelRun: true,
+      promptMode: "none",
+      timeout: 600,
+    });
+    expect(call?.params?.attachments).toBeUndefined();
+    expect(call?.params?.message).toContain(content);
+    expect(call?.params?.message).toContain("query.sql");
+    expect((call as GatewayCall & { timeoutMs?: number })?.timeoutMs).toBe(600_000);
+    expect(firstJsonOutput()?.inputs).toEqual([{ path: filePath, mimeType: "text/plain" }]);
+  });
+
   it.each([
     {
       errorMessage: undefined,
@@ -1086,6 +1106,54 @@ describe("capability cli", () => {
       `agent:main:explicit:${String(nextSessionId)}`,
     );
     expect(nextSessionId).not.toBe(sessionId);
+  });
+
+  it("requires the actual winning OAuth profile and exact model for a constrained Gateway run", async () => {
+    mocks.loadModelCatalog.mockResolvedValueOnce([
+      { id: "gpt-6-sol", provider: "openai", name: "Synthetic model" },
+    ]);
+    mocks.callGateway.mockResolvedValueOnce({
+      result: {
+        authProfile: { profileId: "openai:palladio", mode: "oauth" },
+        payloads: [{ text: "widget count" }],
+        meta: { agentMeta: { provider: "openai", model: "gpt-6-sol" } },
+      },
+    } as never);
+    await runModelProbe(
+      "--gateway",
+      "--model",
+      "openai/gpt-6-sol",
+      "--require-oauth-profile",
+      "openai:personal",
+      "--require-oauth-profile",
+      "openai:palladio",
+    );
+    expect(firstGatewayCall()?.params?.requiredOAuthProfileIds).toEqual([
+      "openai:personal",
+      "openai:palladio",
+    ]);
+    expect(firstJsonOutput()?.authProfile).toEqual({ profileId: "openai:palladio", mode: "oauth" });
+
+    mocks.loadModelCatalog.mockResolvedValueOnce([
+      { id: "gpt-6-sol", provider: "openai", name: "Synthetic model" },
+    ]);
+    mocks.callGateway.mockResolvedValueOnce({
+      result: {
+        authProfile: { profileId: "openai:personal", mode: "api_key" },
+        payloads: [{ text: "must not surface" }],
+        meta: { agentMeta: { provider: "openai", model: "gpt-6-sol" } },
+      },
+    } as never);
+    await expect(
+      runModelProbe(
+        "--gateway",
+        "--model",
+        "openai/gpt-6-sol",
+        "--require-oauth-profile",
+        "openai:personal",
+      ),
+    ).rejects.toThrow("exit 1");
+    expectRuntimeErrorContains("did not prove the requested model");
   });
 
   it.each([

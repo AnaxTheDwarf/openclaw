@@ -248,6 +248,13 @@ export type AgentCommandOpts = {
   onSessionIdChanged?: (sessionId: string) => void;
   /** Internal one-shot model probe mode: no tools, no workspace/chat prompt policy. */
   modelRun?: boolean;
+  /** Gateway-only physical auth constraints for a privileged one-shot probe. */
+  requiredModelRunAuthProfiles?: string[];
+  requiredModelRunModel?: { provider?: string; model?: string };
+  /** Gateway-private winning physical attempt credential evidence for a one-shot model run. */
+  onModelRunAuthProfile?: (
+    profile: { profileId: string; mode: "api_key" | "oauth" | "token" } | undefined,
+  ) => void;
   /** Internal prompt-mode override for trusted local/gateway callsites. */
   promptMode?: PromptMode;
   /** Internal ACP-ready session turn source. Manual spawn turns bypass only the dispatch gate. */
@@ -279,7 +286,10 @@ type AgentCommandGatewayOnlyKey =
   | "onPostAdmittedRunContext"
   | "beforeTerminalDelivery"
   | "prepareAssistantTranscriptMessage"
-  | "internalDeliverySuppressErrors";
+  | "internalDeliverySuppressErrors"
+  | "onModelRunAuthProfile"
+  | "requiredModelRunAuthProfiles"
+  | "requiredModelRunModel";
 
 /** Restricted option surface for external ingress callsites. */
 export type AgentCommandIngressOpts = Omit<

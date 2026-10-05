@@ -578,7 +578,12 @@ async function completeEmbeddedRun(
       pluginHarnessOwnsAuthBootstrap: input.pluginHarnessOwnsAuthBootstrap,
       onSuccessfulAuthBinding: input.runParams.onSuccessfulAuthBinding,
     });
-    input.runParams.onSuccessfulAuthProfile?.(input.authProfileId);
+    input.runParams.onSuccessfulAuthProfile?.(
+      input.authProfileId,
+      input.authProfileId
+        ? input.attemptAuthProfileStore.profiles[input.authProfileId]?.type
+        : undefined,
+    );
   }
   const acceptedSessionSpawnContinuation =
     !error &&

@@ -30,6 +30,7 @@ import { formatEnvelopeForText, providerSummaryText } from "./output.js";
 import { registerLocalProvidersCommand, runCapabilityCommand } from "./providers-command.js";
 
 const LOCAL_MODEL_RUN_SYSTEM_PROMPT = "You are a personal assistant running inside OpenClaw.";
+const MAX_MODEL_RUN_TEXT_BYTES = 4 * 1024 * 1024;
 const HEIC_MODEL_RUN_MIMES = new Set([
   "image/heic",
   "image/heic-sequence",
@@ -48,7 +49,7 @@ async function loadModelCatalogForInspection(cfg: OpenClawConfig, rawAgentId?: s
   );
 }
 
-async function readModelRunImageFiles(files: string[] | undefined) {
+async function readModelRunFiles(files: string[] | undefined, transport: CapabilityTransport) {
   if (!files || files.length === 0) {
     return [];
   }
@@ -63,15 +64,44 @@ async function readModelRunImageFiles(files: string[] | undefined) {
         }),
       );
       if (!mimeType?.startsWith("image/")) {
-        throw new Error(
-          `Unsupported --file for model run: ${resolvedPath}. Only image files are supported; use infer audio transcribe for audio files.`,
-        );
+        if (transport !== "gateway") {
+          throw new Error(
+            `Unsupported --file for model run: ${resolvedPath}. Only image files are supported; use --gateway for UTF-8 text files or infer audio transcribe for audio files.`,
+          );
+        }
+        if (buffer.length > MAX_MODEL_RUN_TEXT_BYTES) {
+          throw new Error(
+            `Model run text file exceeds ${MAX_MODEL_RUN_TEXT_BYTES} bytes: ${resolvedPath}.`,
+          );
+        }
+        let text: string;
+        try {
+          text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+        } catch {
+          throw new Error(
+            `Unsupported --file for model run: ${resolvedPath}. Expected UTF-8 text.`,
+          );
+        }
+        if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(text)) {
+          throw new Error(
+            `Unsupported --file for model run: ${resolvedPath}. Expected plain text.`,
+          );
+        }
+        return {
+          kind: "text" as const,
+          path: resolvedPath,
+          fileName: path.basename(resolvedPath),
+          mimeType: "text/plain",
+          text,
+          sizeBytes: buffer.length,
+        };
       }
       const isHeic = HEIC_MODEL_RUN_MIMES.has(mimeType);
       const imageBuffer = isHeic
         ? await (await import("../../media/media-services.js")).convertHeicToJpeg(buffer)
         : buffer;
       return {
+        kind: "image" as const,
         path: resolvedPath,
         fileName: path.basename(resolvedPath),
         mimeType: isHeic ? "image/jpeg" : mimeType,
@@ -88,6 +118,7 @@ async function runModelRun(params: {
   thinking?: ThinkLevel;
   transport: CapabilityTransport;
   agent?: string;
+  requiredOAuthProfiles?: string[];
 }) {
   const {
     requireProviderModelOverride,
@@ -115,18 +146,33 @@ async function runModelRun(params: {
     preserveAuthProfile: params.transport === "local",
   });
   const hasExplicitProviderModelOverride = Boolean(explicitModelOverride);
-  const imageFiles = await readModelRunImageFiles(params.files);
+  if (
+    params.requiredOAuthProfiles?.length &&
+    (params.transport !== "gateway" || !explicitModelOverride)
+  ) {
+    throw new Error("--require-oauth-profile requires --gateway and an explicit --model.");
+  }
+  const inputFiles = await readModelRunFiles(params.files, params.transport);
+  const imageFiles = inputFiles.filter((file) => file.kind === "image");
+  const textFiles = inputFiles.filter((file) => file.kind === "text");
+  if (textFiles.reduce((total, file) => total + file.sizeBytes, 0) > MAX_MODEL_RUN_TEXT_BYTES) {
+    throw new Error(`Model run text files exceed ${MAX_MODEL_RUN_TEXT_BYTES} bytes in total.`);
+  }
+  const prompt = [
+    params.prompt,
+    ...textFiles.map((file) => `File ${JSON.stringify(file.fileName)}:\n${file.text}`),
+  ].join("\n\n");
   const messageContent =
     imageFiles.length > 0
       ? [
-          { type: "text" as const, text: params.prompt },
+          { type: "text" as const, text: prompt },
           ...imageFiles.map((image) => ({
             type: "image" as const,
             data: image.data,
             mimeType: image.mimeType,
           })),
         ]
-      : params.prompt;
+      : prompt;
   if (params.transport === "local") {
     const { acquireSimpleCompletionModelForAgent, completeWithPreparedSimpleCompletionModel } =
       await import("../../agents/simple-completion-runtime.js");
@@ -201,11 +247,11 @@ async function runModelRun(params: {
               provider: prepared.selection.provider,
               model: prepared.selection.modelId,
               attempts: [],
-              ...(imageFiles.length > 0
+              ...(inputFiles.length > 0
                 ? {
-                    inputs: imageFiles.map((image) => ({
-                      path: image.path,
-                      mimeType: image.mimeType,
+                    inputs: inputFiles.map((file) => ({
+                      path: file.path,
+                      mimeType: file.mimeType,
                     })),
                   }
                 : {}),
@@ -238,6 +284,7 @@ async function runModelRun(params: {
   const sessionKey = buildExplicitSessionIdSessionKey({ agentId, sessionId });
   const response: {
     result?: {
+      authProfile?: { profileId: string; mode: "api_key" | "oauth" | "token" };
       payloads?: Array<{ text?: string; mediaUrl?: string | null; mediaUrls?: string[] }>;
       meta?: {
         agentMeta?: {
@@ -253,7 +300,7 @@ async function runModelRun(params: {
       agentId,
       sessionId,
       sessionKey,
-      message: params.prompt,
+      message: prompt,
       attachments:
         imageFiles.length > 0
           ? imageFiles.map((image) => ({
@@ -267,33 +314,53 @@ async function runModelRun(params: {
       model,
       ...(params.thinking ? { thinking: params.thinking } : {}),
       modelRun: true,
+      ...(params.requiredOAuthProfiles?.length
+        ? { requiredOAuthProfileIds: params.requiredOAuthProfiles }
+        : {}),
       promptMode: "none",
+      timeout: 600,
       cleanupBundleMcpOnRunEnd: true,
       idempotencyKey: randomIdempotencyKey(),
     },
     expectFinal: true,
-    timeoutMs: 120_000,
+    timeoutMs: 600_000,
     clientName: hasModelOverride ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT : GATEWAY_CLIENT_NAMES.CLI,
     mode: hasModelOverride ? GATEWAY_CLIENT_MODES.BACKEND : GATEWAY_CLIENT_MODES.CLI,
     ...(hasModelOverride ? { scopes: [ADMIN_SCOPE] } : {}),
   });
+  if (params.requiredOAuthProfiles?.length) {
+    const selected = response?.result?.authProfile;
+    const actual = response?.result?.meta?.agentMeta;
+    const requested = requireProviderModelOverride(modelRef);
+    if (
+      selected?.mode !== "oauth" ||
+      !params.requiredOAuthProfiles.includes(selected.profileId) ||
+      actual?.provider !== requested?.provider ||
+      actual?.model !== requested?.model.split("@")[0]
+    ) {
+      throw new Error(
+        "Gateway model run did not prove the requested model and a successful allowed OAuth profile.",
+      );
+    }
+  }
   return {
     ok: true,
     capability: "model.run",
     transport: "gateway" as const,
     provider: response?.result?.meta?.agentMeta?.provider,
     model: response?.result?.meta?.agentMeta?.model,
+    ...(response?.result?.authProfile ? { authProfile: response.result.authProfile } : {}),
     attempts: response?.result?.meta?.agentMeta?.fallbackAttempts ?? [],
     outputs: (response?.result?.payloads ?? []).map((payload) => ({
       text: payload.text,
       mediaUrl: payload.mediaUrl,
       mediaUrls: payload.mediaUrls,
     })),
-    ...(imageFiles.length > 0
+    ...(inputFiles.length > 0
       ? {
-          inputs: imageFiles.map((image) => ({
-            path: image.path,
-            mimeType: image.mimeType,
+          inputs: inputFiles.map((file) => ({
+            path: file.path,
+            mimeType: file.mimeType,
           })),
         }
       : {}),
@@ -417,8 +484,14 @@ export function registerModelCapabilityCommands(capability: Command): void {
     .command("run")
     .description("Run a one-shot model turn")
     .requiredOption("--prompt <text>", "Prompt text")
-    .option("--file <path>", "Image file", collectOption, [])
+    .option("--file <path>", "Image file, or UTF-8 text file with --gateway", collectOption, [])
     .option("--model <provider/model>", "Model override")
+    .option(
+      "--require-oauth-profile <id>",
+      "Require a successful OAuth profile (repeatable)",
+      collectOption,
+      [],
+    )
     .option("--thinking <level>", "Thinking level override")
     .option("--local", "Force local execution", false)
     .option("--gateway", "Force gateway execution", false)
@@ -454,6 +527,7 @@ export function registerModelCapabilityCommands(capability: Command): void {
           agent: resolveCapabilityAgentOption(command, opts.agent),
           files: opts.file as string[] | undefined,
           model: opts.model as string | undefined,
+          requiredOAuthProfiles: opts.requireOauthProfile as string[] | undefined,
           thinking,
           transport,
         });

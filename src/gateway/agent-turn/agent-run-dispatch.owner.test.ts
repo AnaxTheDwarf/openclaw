@@ -97,6 +97,29 @@ describe("Gateway dispatch run ownership", () => {
     return { f, owner, dispatch };
   }
 
+  it.each([true, false])(
+    "returns the successful profile only to privileged model runs (privileged: %s)",
+    async (privileged) => {
+      const { params } = createDispatch();
+      mocks.agentCommand.mockImplementationOnce(async (opts) => {
+        opts.onModelRunAuthProfile?.({ profileId: "openai:synthetic-oauth", mode: "oauth" });
+        return { payloads: [{ text: "synthetic answer" }], meta: {} };
+      });
+
+      await dispatchAgentRunFromGateway({
+        ...params,
+        includeModelRunAuthProfile: privileged,
+      });
+
+      const payload = params.io.emitFinal.mock.lastCall?.[0]?.[1] as {
+        result?: { authProfile?: { profileId: string; mode: string } };
+      };
+      expect(payload.result?.authProfile).toEqual(
+        privileged ? { profileId: "openai:synthetic-oauth", mode: "oauth" } : undefined,
+      );
+    },
+  );
+
   it.each(["command", "commentary-media"] as const)(
     "joins a captured terminal save when %s startup fails before its delivery hook",
     async (startup) => {

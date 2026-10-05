@@ -96,6 +96,7 @@ function createMutableEmbeddedRunAuthController(params: {
   harness: EmbeddedRunAuthState;
   setRuntimeApiKey: RuntimeApiKeySetter;
   profileCandidates?: Array<string | undefined>;
+  requiredOAuthProfileIds?: readonly string[];
   authStore?: AuthProfileStore;
   fallbackConfigured?: boolean;
   lockedProfileId?: string;
@@ -118,6 +119,7 @@ function createMutableEmbeddedRunAuthController(params: {
       } as AuthProfileStore),
     authStorage: { setRuntimeApiKey: params.setRuntimeApiKey },
     profileCandidates: params.profileCandidates ?? ["default"],
+    requiredOAuthProfileIds: params.requiredOAuthProfileIds,
     lockedProfileId: params.lockedProfileId,
     initialThinkLevel: "medium",
     attemptedThinking: new Set(),
@@ -141,6 +143,55 @@ describe("createEmbeddedRunAuthController", () => {
   beforeEach(() => {
     mocks.prepareProviderRuntimeAuth.mockReset();
     mocks.getApiKeyForModelCore.mockReset();
+  });
+
+  it("never materializes a disallowed credential for a constrained run", async () => {
+    const harness = createMutableAuthControllerHarness();
+    const controller = createMutableEmbeddedRunAuthController({
+      harness,
+      setRuntimeApiKey: vi.fn(),
+      profileCandidates: ["synthetic-key"],
+      requiredOAuthProfileIds: ["synthetic-key"],
+      authStore: {
+        version: 1,
+        profiles: {
+          "synthetic-key": { type: "api_key", provider: "custom-openai", key: "synthetic" },
+        },
+      },
+    });
+    await expect(controller.initializeAuthProfile()).rejects.toThrow(/non-approved OAuth profile/);
+    expect(mocks.getApiKeyForModelCore).not.toHaveBeenCalled();
+  });
+
+  it("pins approved OAuth materialization without a direct credential fallback", async () => {
+    const harness = createMutableAuthControllerHarness();
+    const controller = createMutableEmbeddedRunAuthController({
+      harness,
+      setRuntimeApiKey: vi.fn(),
+      profileCandidates: ["synthetic-oauth"],
+      requiredOAuthProfileIds: ["synthetic-oauth"],
+      authStore: {
+        version: 1,
+        profiles: {
+          "synthetic-oauth": {
+            type: "oauth",
+            provider: "custom-openai",
+            access: "synthetic-access",
+            refresh: "synthetic-refresh",
+            expires: Date.now() + 30 * 60_000,
+          },
+        },
+      },
+    });
+    mocks.getApiKeyForModelCore.mockResolvedValue({ apiKey: "synthetic-access", mode: "oauth" });
+    await controller.initializeAuthProfile();
+    expect(mocks.getApiKeyForModelCore).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        profileId: "synthetic-oauth",
+        lockedProfile: true,
+        allowAuthProfileFallback: false,
+      }),
+    );
   });
 
   it("commits a prepared route only after its credential resolves", async () => {

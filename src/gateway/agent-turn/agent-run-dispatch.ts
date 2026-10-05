@@ -74,6 +74,8 @@ export function dispatchAgentRunFromGateway(params: {
   canonicalSkillWorkspaceDir?: string;
   restoreAdmittedRecovery?: () => Promise<MainSessionRecoveryPendingTarget | undefined>;
   commandRuntimeContext?: PreparedAgentCommandRuntimeContext;
+  /** Only administrator-authorized one-shot probes may receive the winning profile identity. */
+  includeModelRunAuthProfile?: boolean;
   /** Privacy classification carried from the resolved session entry. */
   isIncognito?: boolean;
   onSettled?: (outcome: {
@@ -86,6 +88,7 @@ export function dispatchAgentRunFromGateway(params: {
     params.isIncognito,
     params.context.logGateway,
   );
+  let modelRunAuthProfile: { profileId: string; mode: "api_key" | "oauth" | "token" } | undefined;
   const assertSettlementCurrent = params.assertSettlementCurrent;
   const registeredRunEntry = params.admittedRunEntry;
   const jobSessionBinding = registeredRunEntry ?? params.ingressOpts;
@@ -255,6 +258,13 @@ export function dispatchAgentRunFromGateway(params: {
     const ingressOptsWithSpawnFacts = withAgentCommandExecutionIdentitySpawnFacts(
       {
         ...params.ingressOpts,
+        ...(params.includeModelRunAuthProfile
+          ? {
+              onModelRunAuthProfile: (profile: typeof modelRunAuthProfile) => {
+                modelRunAuthProfile = profile;
+              },
+            }
+          : {}),
         ...(commentaryMedia
           ? { prepareAssistantTranscriptMessage: commentaryMedia.prepareAssistantTranscriptMessage }
           : {}),
@@ -394,7 +404,10 @@ export function dispatchAgentRunFromGateway(params: {
         ...(responseStatus === "timeout" && terminalOutcome.providerStarted !== undefined
           ? { providerStarted: terminalOutcome.providerStarted }
           : {}),
-        result,
+        result:
+          params.includeModelRunAuthProfile && responseStatus === "ok" && modelRunAuthProfile
+            ? { ...result, authProfile: modelRunAuthProfile }
+            : result,
         ...(inputProcessingCompleted ? { inputProcessingCompleted: true } : {}),
       };
       const persistTerminalDedupe = () => {

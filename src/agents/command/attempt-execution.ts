@@ -153,6 +153,7 @@ export function runAgentAttempt(
       onSuccessfulAuthProfile?: (selection: {
         authProfileId?: string;
         authProfileIdSource?: "auto" | "user";
+        authProfileMode?: "api_key" | "oauth" | "token";
       }) => void;
     },
 ) {
@@ -847,6 +848,8 @@ export function runAgentAttempt(
     allowGatewaySubagentBinding: params.opts.allowGatewaySubagentBinding,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     modelRun: params.opts.modelRun,
+    requiredModelRunAuthProfiles: params.opts.requiredModelRunAuthProfiles,
+    requiredModelRunModel: params.opts.requiredModelRunModel,
     promptMode: params.opts.promptMode,
     onAgentEvent: params.onAgentEvent,
     deferTerminalLifecycle: params.deferTerminalLifecycle,
@@ -859,9 +862,10 @@ export function runAgentAttempt(
     onCompactionAccounting: params.onCompactionAccounting,
     onCompactionRequestBudget: params.onCompactionRequestBudget,
     onSuccessfulAuthProfile: params.onSuccessfulAuthProfile
-      ? (successfulProfileId) =>
+      ? (successfulProfileId, authProfileMode) =>
           params.onSuccessfulAuthProfile?.({
             authProfileId: successfulProfileId,
+            ...(authProfileMode ? { authProfileMode } : {}),
             authProfileIdSource: successfulProfileId
               ? successfulProfileId === authProfileId
                 ? harnessAuthSelection.authProfileIdSource

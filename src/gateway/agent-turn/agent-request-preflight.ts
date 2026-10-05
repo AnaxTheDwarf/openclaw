@@ -164,6 +164,17 @@ export function prepareAgentRequestPreflight(params: {
   const requestedInternalSessionEffects = request.sessionEffects === "internal";
   const requestedModelOverride = Boolean(request.provider || request.model);
   const isOneShotModelRun = request.modelRun === true;
+  if (
+    request.requiredOAuthProfileIds &&
+    (!isOneShotModelRun ||
+      !hasGatewayAdminScope(params.client) ||
+      !request.provider ||
+      !request.model)
+  ) {
+    return rejectInvalidRequest(
+      "requiredOAuthProfileIds requires an administrator-authorized modelRun with an explicit provider and model.",
+    );
+  }
   const isRawModelRun = isOneShotModelRun || request.promptMode === "none";
   if (request.promptMode === "none" && !isOneShotModelRun) {
     return rejectInvalidRequest(

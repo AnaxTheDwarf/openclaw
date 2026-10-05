@@ -76,19 +76,20 @@ shell-completion metadata.
 
 ## Common tasks
 
-| Task                          | Command                                                                                       | Notes                                                 |
-| ----------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Run a text/model prompt       | `openclaw infer model run --prompt "..." --json`                                              | Local by default                                      |
-| Run a model prompt on images  | `openclaw infer model run --prompt "Describe this" --file ./image.png --model provider/model` | Repeat `--file` for multiple images                   |
-| Generate an image             | `openclaw infer image generate --prompt "..." --json`                                         | Use `image edit` when starting from an existing file  |
-| Describe an image file or URL | `openclaw infer image describe --file ./image.png --prompt "..." --json`                      | `--model` must be an image-capable `<provider/model>` |
-| Transcribe audio              | `openclaw infer audio transcribe --file ./memo.m4a --json`                                    | `--model` must be `<provider/model>`                  |
-| Synthesize speech             | `openclaw infer tts convert --text "..." --output ./speech.mp3 --json`                        | `tts status` only runs through the gateway            |
-| Generate a video              | `openclaw infer video generate --prompt "..." --json`                                         | Supports provider hints such as `--resolution`        |
-| Describe a video file         | `openclaw infer video describe --file ./clip.mp4 --json`                                      | `--model` must be `<provider/model>`                  |
-| Search the web                | `openclaw infer web search --query "..." --json`                                              |                                                       |
-| Fetch a web page              | `openclaw infer web fetch --url https://example.com --json`                                   |                                                       |
-| Create embeddings             | `openclaw infer embedding create --text "..." --json`                                         |                                                       |
+| Task                              | Command                                                                                       | Notes                                                   |
+| --------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Run a text/model prompt           | `openclaw infer model run --prompt "..." --json`                                              | Local by default                                        |
+| Run a model prompt on images      | `openclaw infer model run --prompt "Describe this" --file ./image.png --model provider/model` | Repeat `--file` for multiple images                     |
+| Run a model prompt on a text file | `openclaw infer model run --gateway --prompt "Summarize this" --file ./notes.txt`             | UTF-8 text is included directly; no tools are available |
+| Generate an image                 | `openclaw infer image generate --prompt "..." --json`                                         | Use `image edit` when starting from an existing file    |
+| Describe an image file or URL     | `openclaw infer image describe --file ./image.png --prompt "..." --json`                      | `--model` must be an image-capable `<provider/model>`   |
+| Transcribe audio                  | `openclaw infer audio transcribe --file ./memo.m4a --json`                                    | `--model` must be `<provider/model>`                    |
+| Synthesize speech                 | `openclaw infer tts convert --text "..." --output ./speech.mp3 --json`                        | `tts status` only runs through the gateway              |
+| Generate a video                  | `openclaw infer video generate --prompt "..." --json`                                         | Supports provider hints such as `--resolution`          |
+| Describe a video file             | `openclaw infer video describe --file ./clip.mp4 --json`                                      | `--model` must be `<provider/model>`                    |
+| Search the web                    | `openclaw infer web search --query "..." --json`                                              |                                                         |
+| Fetch a web page                  | `openclaw infer web fetch --url https://example.com --json`                                   |                                                         |
+| Create embeddings                 | `openclaw infer embedding create --text "..." --json`                                         |                                                         |
 
 ## Behavior
 
@@ -112,9 +113,10 @@ shell-completion metadata.
   an explicit id first, then `agents.defaults.systemAgent.agentId`, then the sole configured agent.
 - Generated image and video `--output` files are staged beside the destination and replace it only after the complete buffer is written; a failed write leaves an existing destination unchanged.
 - Local `model run` is a lean one-shot provider completion: it resolves the configured agent model and auth but does not start a chat-agent turn, load tools, or open bundled MCP servers.
-- `model run --file` attaches image files (auto-detected MIME type) to the prompt; repeat `--file` for multiple images. Non-image files are rejected — use `infer audio transcribe` or `infer video describe` instead.
+- `model run --file` attaches image files (auto-detected MIME type) to the prompt; repeat `--file` for multiple files. With `--gateway`, UTF-8 text files are included directly in the raw model message, up to 4 MiB total. Binary and invalid UTF-8 files are rejected. Local model runs still accept images only; use `infer audio transcribe` or `infer video describe` for other media.
 - `model run --gateway` exercises Gateway routing, saved auth, provider selection, and the embedded runtime, but stays a raw model probe: no prior session transcript, bootstrap/AGENTS context, tools, or bundled MCP servers.
 - `model run --gateway --model <provider/model>` requires a trusted-operator gateway credential, because it asks the Gateway to run a one-off provider/model override.
+- `model run --gateway --model <provider/model> --require-oauth-profile <id>` constrains the physical credential to the named saved OAuth profile before provider invocation. Repeat the flag to permit an ordered fallback list. The result reports the successful profile ID and OAuth mode; a missing or mismatched result fails the command. This option requires administrator Gateway scope and never permits API-key or implicit credentials.
 
 ## Model
 
@@ -152,7 +154,8 @@ Notes:
 - Local `model run --model <provider/model>` can resolve exact bundled static-catalog rows (the same rows [`openclaw models list --all`](/cli/models) shows) before that provider is written to config. Provider auth is still required; missing credentials fail as auth errors, not `Unknown model`.
 - For Mistral Medium 3.5 reasoning probes, leave temperature unset/default. Mistral rejects `reasoning_effort="high"` with `temperature: 0`; use default temperature or a non-zero value such as `0.7`.
 - OpenAI ChatGPT/Codex OAuth (`openai-chatgpt-responses` API) local probes add a minimal system instruction so the transport can populate its required `instructions` field — no full agent context, tools, memory, or session transcript.
-- `model run --file` attaches image content directly to the single user message. Common formats (PNG, JPEG, WebP) work when MIME type is detected as `image/*`; unsupported or unrecognized files fail before the provider is called. Use `infer image describe` instead when you want OpenClaw's image-model routing and fallbacks rather than a direct multimodal-model probe.
+- `model run --file` attaches image content directly to the single user message. Common formats (PNG, JPEG, WebP) work when MIME type is detected as `image/*`. Gateway text files are included as UTF-8 text in that same message, without file-reading tools or agent context. Files that cannot be decoded as plain text fail before the Gateway call. Use `infer image describe` instead when you want OpenClaw's image-model routing and fallbacks rather than a direct multimodal-model probe.
+- Gateway model runs have a 600-second run deadline and caller wait; expiration reports a timeout rather than silently abandoning the turn.
 - The selected model must support image input; text-only models may reject the request at the provider layer.
 - `model run --prompt` must contain non-whitespace text; empty prompts are rejected before any provider or Gateway call.
 - Local `model run` exits non-zero when the provider returns no text output, so unreachable providers and empty completions do not look like successful probes.

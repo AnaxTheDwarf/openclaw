@@ -14,6 +14,7 @@ export type CapabilityEnvelope = {
   transport: CapabilityTransport;
   provider?: string;
   model?: string;
+  authProfile?: { profileId: string; mode: "api_key" | "oauth" | "token" };
   attempts: Array<Record<string, unknown>>;
   inputs?: Array<Record<string, unknown>>;
   outputs: Array<Record<string, unknown>>;
@@ -48,6 +49,7 @@ export const CAPABILITY_METADATA: CapabilityMetadata[] = [
       "--prompt",
       "--file",
       "--model",
+      "--require-oauth-profile",
       "--thinking",
       "--local",
       "--gateway",

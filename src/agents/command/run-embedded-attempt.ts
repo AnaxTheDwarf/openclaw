@@ -209,7 +209,11 @@ export async function runEmbeddedAgentAttempt(params: RunEmbeddedAgentAttemptPar
     },
   });
   let maintenanceAuthProfile:
-    | { authProfileId?: string; authProfileIdSource?: "auto" | "user" }
+    | {
+        authProfileId?: string;
+        authProfileIdSource?: "auto" | "user";
+        authProfileMode?: "api_key" | "oauth" | "token";
+      }
     | undefined;
   let fallbackProvider = provider;
   let fallbackModel = model;
@@ -244,21 +248,22 @@ export async function runEmbeddedAgentAttempt(params: RunEmbeddedAgentAttemptPar
         ? getGeneratedMediaTaskIdsForSessionKey(sessionKey, sessionAgentId)
         : new Set<string>();
       const spawnedBy = normalizedSpawned.spawnedBy ?? sessionEntry?.spawnedBy;
-      const effectiveFallbacksOverride = isModelSelectionLocked(sessionEntry)
-        ? []
-        : (params.opts.modelFallbacksOverride ??
-          resolveEffectiveModelFallbacks({
-            cfg,
-            agentId: sessionAgentId,
-            sessionKey,
-            hasSessionModelOverride:
-              hasExplicitRunOverride || Boolean(storedProviderOverride || storedModelOverride),
-            modelOverrideSource: hasExplicitRunOverride ? "user" : storedModelOverrideSource,
-            subagentSpawnLineage: (sessionEntry?.spawnDepth ?? 0) > 0,
-            hasAutoFallbackProvenance: hasExplicitRunOverride
-              ? false
-              : hasStoredAutoFallbackProvenance,
-          }));
+      const effectiveFallbacksOverride =
+        params.opts.requiredModelRunAuthProfiles || isModelSelectionLocked(sessionEntry)
+          ? []
+          : (params.opts.modelFallbacksOverride ??
+            resolveEffectiveModelFallbacks({
+              cfg,
+              agentId: sessionAgentId,
+              sessionKey,
+              hasSessionModelOverride:
+                hasExplicitRunOverride || Boolean(storedProviderOverride || storedModelOverride),
+              modelOverrideSource: hasExplicitRunOverride ? "user" : storedModelOverrideSource,
+              subagentSpawnLineage: (sessionEntry?.spawnDepth ?? 0) > 0,
+              hasAutoFallbackProvenance: hasExplicitRunOverride
+                ? false
+                : hasStoredAutoFallbackProvenance,
+            }));
 
       const fallbackRuntimeState: { originRuntime?: "cli" | "embedded" } = {};
       attemptLifecycleState.currentTurnUserMessagePersisted = false;
@@ -351,6 +356,15 @@ export async function runEmbeddedAgentAttempt(params: RunEmbeddedAgentAttemptPar
           fallbackTrajectoryRecorder?.recordEvent("model.fallback_step", step);
         },
         runCandidate: async (providerOverride, modelOverride, runOptions) => {
+          if (
+            params.opts.requiredModelRunAuthProfiles &&
+            (providerOverride !== params.opts.requiredModelRunModel?.provider ||
+              modelOverride !== params.opts.requiredModelRunModel?.model)
+          ) {
+            throw new Error(
+              "Constrained model run selected a different model before provider invocation.",
+            );
+          }
           clearAgentRunTerminalWriteContext(params.preparedRunAdmission.operationalRunInstance);
           const candidateAccounting = compactionAccounting.beginCandidate(deferredLifecycle.signal);
           maintenanceAuthProfile = undefined;

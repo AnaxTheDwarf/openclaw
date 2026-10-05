@@ -234,6 +234,121 @@ describe("embedded run auth plan provider pin", () => {
     },
   );
 
+  it("rejects a disallowed API-key credential before any provider invocation", async () => {
+    readCodexCliCredentialsCachedMock.mockReturnValue(null);
+    writePersistedAuthProfileStoreRaw(
+      {
+        version: 1,
+        profiles: {
+          "openai:synthetic-key": { type: "api_key", provider: "openai", key: "synthetic-key" },
+        },
+      },
+      agentDir,
+    );
+    const stores = modelRuntime.createEmptyAgentDiscoveryStores();
+    const invokeProvider = vi.fn();
+    await expect(
+      withPluginRuntimeGenerationScope(
+        { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+        () =>
+          prepareEmbeddedRunAuthPlan({
+            assertCurrent: () => {},
+            runParams: {
+              sessionId: "synthetic-session",
+              runId: "synthetic-run",
+              workspaceDir: state.workspaceDir,
+              prompt: "Count widgets",
+              timeoutMs: 5_000,
+              modelRun: true,
+              requiredModelRunAuthProfiles: ["openai:synthetic-key"],
+              requiredModelRunModel: { provider: "openai", model: platformModel.id },
+            },
+            provider: "openai",
+            modelId: platformModel.id,
+            model: platformModel,
+            agentDir,
+            workspaceDir: state.workspaceDir,
+            nativeModelOwned: false,
+            ...stores,
+            getAgentHarness: () => openClawHarness,
+            setAgentHarness: () => {},
+            getRuntimeModel: () => platformModel,
+            getEffectiveModel: () => platformModel,
+            applyResolvedRuntimeModel: invokeProvider,
+            selectHarnessForPreparedAttempts: () => openClawHarness,
+          }),
+      ),
+    ).rejects.toThrow(/Required OAuth profile/);
+    expect(invokeProvider).not.toHaveBeenCalled();
+  });
+
+  it("prepares only the ordered OAuth credentials for a constrained run", async () => {
+    readCodexCliCredentialsCachedMock.mockReturnValue(null);
+    const oauth = (suffix: string) => ({
+      type: "oauth" as const,
+      provider: "openai",
+      access: `synthetic-${suffix}-access`,
+      refresh: `synthetic-${suffix}-refresh`,
+      expires: Date.now() + 30 * 60_000,
+    });
+    writePersistedAuthProfileStoreRaw(
+      {
+        version: 1,
+        profiles: {
+          "openai:personal": oauth("personal"),
+          "openai:palladio": oauth("palladio"),
+          "openai:disallowed": { type: "api_key", provider: "openai", key: "synthetic-key" },
+        },
+      },
+      agentDir,
+    );
+    const stores = modelRuntime.createEmptyAgentDiscoveryStores();
+    vi.spyOn(modelRuntime, "resolveModelAsync").mockResolvedValue({
+      ...stores,
+      model: subscriptionModel,
+      logicalRef: { provider: "openai", model: subscriptionModel.id },
+    });
+    const prepared = await withPluginRuntimeGenerationScope(
+      { metadataSnapshot: createPluginMetadataSnapshotFixture() },
+      () =>
+        prepareEmbeddedRunAuthPlan({
+          assertCurrent: () => {},
+          runParams: {
+            sessionId: "synthetic-session",
+            runId: "synthetic-run",
+            workspaceDir: state.workspaceDir,
+            prompt: "Count widgets",
+            timeoutMs: 5_000,
+            modelRun: true,
+            requiredModelRunAuthProfiles: ["openai:personal", "openai:palladio"],
+            requiredModelRunModel: { provider: "openai", model: subscriptionModel.id },
+          },
+          provider: "openai",
+          modelId: subscriptionModel.id,
+          model: subscriptionModel,
+          agentDir,
+          workspaceDir: state.workspaceDir,
+          nativeModelOwned: false,
+          ...stores,
+          getAgentHarness: () => openClawHarness,
+          setAgentHarness: () => {},
+          getRuntimeModel: () => subscriptionModel,
+          getEffectiveModel: () => subscriptionModel,
+          applyResolvedRuntimeModel: () => {},
+          selectHarnessForPreparedAttempts: () => openClawHarness,
+        }),
+    );
+    expect(prepared.preparedAuthAttempts.map((attempt) => attempt.profileId)).toEqual([
+      "openai:personal",
+      "openai:palladio",
+    ]);
+    expect(
+      prepared.preparedAuthAttempts.every(
+        (attempt) => attempt.kind === "profile" && attempt.plan.selectedAuthMode === "oauth",
+      ),
+    ).toBe(true);
+  });
+
   it.each([true, false])(
     "uses host API-key auth without importing Codex OAuth (pin=%s)",
     async (pin) => {

@@ -539,6 +539,14 @@ async function agentCommandInternal(
         trackInternalModelRunTarget,
         preparedRunAdmission,
       });
+      if (opts.modelRun) {
+        const profile = embeddedAttempt.maintenanceAuthProfile;
+        opts.onModelRunAuthProfile?.(
+          profile?.authProfileId && profile.authProfileMode
+            ? { profileId: profile.authProfileId, mode: profile.authProfileMode }
+            : undefined,
+        );
+      }
       if (embeddedAttempt.fallbackExhausted) {
         opts.onModelFallbackExhausted?.();
       }

@@ -87,6 +87,14 @@ export async function prepareEmbeddedRunRuntime(input: {
     authStorage,
     modelRegistry,
   } = modelSetup;
+  if (
+    params.requiredModelRunAuthProfiles &&
+    (provider !== params.requiredModelRunModel?.provider ||
+      modelId !== params.requiredModelRunModel?.model ||
+      modelSelectionChangedByHook)
+  ) {
+    throw new Error("Constrained model run changed its selected model before provider invocation.");
+  }
   let agentHarness = modelSetup.agentHarness;
   let pluginHarnessOwnsTransport = modelSetup.pluginHarnessOwnsTransport;
   let preparedThinkingCapabilityReady = false;
@@ -340,6 +348,7 @@ export async function prepareEmbeddedRunRuntime(input: {
     authStore: attemptAuthProfileStore,
     authStorage,
     profileCandidates,
+    requiredOAuthProfileIds: params.requiredModelRunAuthProfiles,
     lockedProfileId,
     initialThinkLevel,
     attemptedThinking,
