@@ -51,41 +51,41 @@ describe("terminal auth resolution", () => {
     },
   );
 
-  it("reports the OAuth mode from the completed attempt's profile snapshot", async () => {
-    const text = "Synthetic model answer.";
-    const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text }] });
-    const onSuccessfulAuthProfile = vi.fn();
-    await resolveEmbeddedRunTerminal(
-      makeTerminalInput({
-        attempt: makeEmbeddedRunnerAttempt({
-          assistantTexts: [text],
-          lastAssistant: assistant,
-          currentAttemptAssistant: assistant,
-        }),
-        attemptAssistant: assistant,
-        payloadsWithToolMedia: [{ text }],
-        authProfileId: "openai:synthetic-oauth",
-        attemptAuthProfileStore: {
-          version: 1,
-          profiles: {
-            "openai:synthetic-oauth": {
-              type: "oauth",
-              provider: "openai",
-              access: "synthetic-access",
-              refresh: "synthetic-refresh",
-              expires: 4_102_444_800_000,
+  it.each(["openai:personal", "openai:palladio"])(
+    "reports the successful %s OAuth profile from the completed attempt",
+    async (profileId) => {
+      const text = "Synthetic model answer.";
+      const assistant = buildEmbeddedRunnerAssistant({ content: [{ type: "text", text }] });
+      const onSuccessfulAuthProfile = vi.fn();
+      await resolveEmbeddedRunTerminal(
+        makeTerminalInput({
+          attempt: makeEmbeddedRunnerAttempt({
+            assistantTexts: [text],
+            lastAssistant: assistant,
+            currentAttemptAssistant: assistant,
+          }),
+          attemptAssistant: assistant,
+          payloadsWithToolMedia: [{ text }],
+          authProfileId: profileId,
+          attemptAuthProfileStore: {
+            version: 1,
+            profiles: {
+              [profileId]: {
+                type: "oauth",
+                provider: "openai",
+                access: "synthetic-access",
+                refresh: "synthetic-refresh",
+                expires: 4_102_444_800_000,
+              },
             },
           },
-        },
-        runParams: { authProfileStateMode: "read-only", onSuccessfulAuthProfile },
-      }),
-    );
+          runParams: { authProfileStateMode: "read-only", onSuccessfulAuthProfile },
+        }),
+      );
 
-    expect(onSuccessfulAuthProfile).toHaveBeenCalledExactlyOnceWith(
-      "openai:synthetic-oauth",
-      "oauth",
-    );
-  });
+      expect(onSuccessfulAuthProfile).toHaveBeenCalledExactlyOnceWith(profileId, "oauth");
+    },
+  );
 
   it.each([
     {

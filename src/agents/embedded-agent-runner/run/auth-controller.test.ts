@@ -183,7 +183,11 @@ describe("createEmbeddedRunAuthController", () => {
         },
       },
     });
-    mocks.getApiKeyForModelCore.mockResolvedValue({ apiKey: "synthetic-access", mode: "oauth" });
+    mocks.getApiKeyForModelCore.mockResolvedValue({
+      apiKey: "synthetic-access",
+      mode: "oauth",
+      profileId: "synthetic-oauth",
+    });
     await controller.initializeAuthProfile();
     expect(mocks.getApiKeyForModelCore).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
@@ -192,6 +196,47 @@ describe("createEmbeddedRunAuthController", () => {
         allowAuthProfileFallback: false,
       }),
     );
+  });
+
+  it("records the palladio OAuth winner after the personal profile fails", async () => {
+    const harness = createMutableAuthControllerHarness();
+    const oauth = (suffix: string) => ({
+      type: "oauth" as const,
+      provider: "custom-openai",
+      access: `synthetic-${suffix}-access`,
+      refresh: `synthetic-${suffix}-refresh`,
+      expires: Date.now() + 30 * 60_000,
+    });
+    const controller = createMutableEmbeddedRunAuthController({
+      harness,
+      setRuntimeApiKey: vi.fn(),
+      profileCandidates: ["custom-openai:personal", "custom-openai:palladio"],
+      requiredOAuthProfileIds: ["custom-openai:personal", "custom-openai:palladio"],
+      authStore: {
+        version: 1,
+        profiles: {
+          "custom-openai:personal": oauth("personal"),
+          "custom-openai:palladio": oauth("palladio"),
+          "custom-openai:disallowed": {
+            type: "api_key",
+            provider: "custom-openai",
+            key: "synthetic-key",
+          },
+        },
+      },
+    });
+    mocks.getApiKeyForModelCore.mockImplementation(async ({ profileId }) => {
+      if (profileId === "custom-openai:personal") {
+        throw new Error("Synthetic OAuth refresh failure");
+      }
+      return { apiKey: "synthetic-palladio-access", mode: "oauth", profileId };
+    });
+    await controller.initializeAuthProfile();
+    expect(mocks.getApiKeyForModelCore.mock.calls.map(([params]) => params.profileId)).toEqual([
+      "custom-openai:personal",
+      "custom-openai:palladio",
+    ]);
+    expect(harness.lastProfileId).toBe("custom-openai:palladio");
   });
 
   it("commits a prepared route only after its credential resolves", async () => {

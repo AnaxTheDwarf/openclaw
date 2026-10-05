@@ -497,6 +497,12 @@ export function createEmbeddedRunAuthController(params: {
       secretSentinels: true,
     });
     if (
+      params.requiredOAuthProfileIds &&
+      (apiKeyInfo.profileId !== candidate || apiKeyInfo.mode !== "oauth")
+    ) {
+      throw new Error("Constrained model run did not resolve the selected OAuth profile.");
+    }
+    if (
       preparedModel?.authRequirement &&
       !providerModelRouteAcceptsAuthMode({
         requirement: preparedModel.authRequirement,

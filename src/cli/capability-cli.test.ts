@@ -1114,6 +1114,29 @@ describe("capability cli", () => {
     expect(nextSessionId).not.toBe(sessionId);
   });
 
+  it("reports the successful personal OAuth profile for a constrained Gateway run", async () => {
+    mocks.loadModelCatalog.mockResolvedValueOnce([
+      { id: "gpt-6-sol", provider: "openai", name: "Synthetic model" },
+    ]);
+    mocks.callGateway.mockResolvedValueOnce({
+      result: {
+        authProfile: { profileId: "openai:personal", mode: "oauth" },
+        payloads: [{ text: "widget count" }],
+        meta: { agentMeta: { provider: "openai", model: "gpt-6-sol" } },
+      },
+    } as never);
+    await runModelProbe(
+      "--gateway",
+      "--model",
+      "openai/gpt-6-sol",
+      "--require-oauth-profile",
+      "openai:personal",
+      "--require-oauth-profile",
+      "openai:palladio",
+    );
+    expect(firstJsonOutput()?.authProfile).toEqual({ profileId: "openai:personal", mode: "oauth" });
+  });
+
   it("requires the actual winning OAuth profile and exact model for a constrained Gateway run", async () => {
     mocks.loadModelCatalog.mockResolvedValueOnce([
       { id: "gpt-6-sol", provider: "openai", name: "Synthetic model" },
