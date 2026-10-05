@@ -82,10 +82,13 @@ async function readModelRunFiles(files: string[] | undefined, transport: Capabil
             `Unsupported --file for model run: ${resolvedPath}. Expected UTF-8 text.`,
           );
         }
-        if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(text)) {
-          throw new Error(
-            `Unsupported --file for model run: ${resolvedPath}. Expected plain text.`,
-          );
+        for (let index = 0; index < text.length; index += 1) {
+          const code = text.charCodeAt(index);
+          if (code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31)) {
+            throw new Error(
+              `Unsupported --file for model run: ${resolvedPath}. Expected plain text.`,
+            );
+          }
         }
         return {
           kind: "text" as const,

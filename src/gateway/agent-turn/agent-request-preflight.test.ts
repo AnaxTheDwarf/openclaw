@@ -63,6 +63,35 @@ describe("agent database admission preflight", () => {
   );
 });
 
+describe("constrained model run admission", () => {
+  it("rejects an unprivileged caller before the prompt reaches an agent run", () => {
+    const respond = vi.fn();
+    const result = prepareAgentRequestPreflight({
+      request: {
+        message: "Count synthetic widgets",
+        agentId: "main",
+        provider: "openai",
+        model: "gpt-6-sol",
+        modelRun: true,
+        requiredOAuthProfileIds: ["openai:personal", "openai:palladio"],
+      },
+      context: { getRuntimeConfig: () => ({}), dedupe: new Map() },
+      client: null,
+      io: createAgentTurnIo(respond),
+    } as never);
+
+    expect(result).toBeUndefined();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        code: "INVALID_REQUEST",
+        message: expect.stringContaining("administrator-authorized modelRun"),
+      }),
+    );
+  });
+});
+
 function runPreflight(
   swarmOutputSchema?: Record<string, unknown>,
   swarmCollector = true,

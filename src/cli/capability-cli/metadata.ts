@@ -50,6 +50,7 @@ export const CAPABILITY_METADATA: CapabilityMetadata[] = [
       "--file",
       "--model",
       "--require-oauth-profile",
+      "--timeout-seconds",
       "--thinking",
       "--local",
       "--gateway",

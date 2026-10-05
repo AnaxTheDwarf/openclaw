@@ -686,6 +686,11 @@ describe("capability cli", () => {
     }
   });
 
+  it("advertises the opt-in Gateway model-run timeout", async () => {
+    await runCapability("inspect", "--name", "model.run", "--json");
+    expect(firstJsonOutput()?.flags).toEqual(expect.arrayContaining(["--timeout-seconds"]));
+  });
+
   it("renders an explicit empty model list without changing JSON output", async () => {
     mocks.loadModelCatalog.mockResolvedValue([]);
 

@@ -156,7 +156,7 @@ Notes:
 - For Mistral Medium 3.5 reasoning probes, leave temperature unset/default. Mistral rejects `reasoning_effort="high"` with `temperature: 0`; use default temperature or a non-zero value such as `0.7`.
 - OpenAI ChatGPT/Codex OAuth (`openai-chatgpt-responses` API) local probes add a minimal system instruction so the transport can populate its required `instructions` field — no full agent context, tools, memory, or session transcript.
 - `model run --file` attaches image content directly to the single user message. Common formats (PNG, JPEG, WebP) work when MIME type is detected as `image/*`. Gateway text files are included as UTF-8 text in that same message, without file-reading tools or agent context. Files that cannot be decoded as plain text fail before the Gateway call. Use `infer image describe` instead when you want OpenClaw's image-model routing and fallbacks rather than a direct multimodal-model probe.
-- Gateway model runs have a 600-second run deadline and caller wait; expiration reports a timeout rather than silently abandoning the turn.
+- Gateway model runs retain the 120-second CLI wait by default. `--timeout-seconds 600` opts into a 600-second Gateway run budget plus a 10-second caller settlement allowance; expiration reports a timeout.
 - The selected model must support image input; text-only models may reject the request at the provider layer.
 - `model run --prompt` must contain non-whitespace text; empty prompts are rejected before any provider or Gateway call.
 - Local `model run` exits non-zero when the provider returns no text output, so unreachable providers and empty completions do not look like successful probes.

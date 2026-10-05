@@ -103,7 +103,7 @@ describe("Gateway dispatch run ownership", () => {
       const { params } = createDispatch();
       mocks.agentCommand.mockImplementationOnce(async (opts) => {
         opts.onModelRunAuthProfile?.({ profileId: "openai:synthetic-oauth", mode: "oauth" });
-        return { payloads: [{ text: "synthetic answer" }], meta: {} };
+        return { payloads: [{ text: "synthetic answer", mediaUrl: null }], meta: {} };
       });
 
       await dispatchAgentRunFromGateway({

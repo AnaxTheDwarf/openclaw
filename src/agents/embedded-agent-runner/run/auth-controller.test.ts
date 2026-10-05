@@ -145,58 +145,49 @@ describe("createEmbeddedRunAuthController", () => {
     mocks.getApiKeyForModelCore.mockReset();
   });
 
-  it("never materializes a disallowed credential for a constrained run", async () => {
-    const harness = createMutableAuthControllerHarness();
-    const controller = createMutableEmbeddedRunAuthController({
-      harness,
-      setRuntimeApiKey: vi.fn(),
-      profileCandidates: ["synthetic-key"],
-      requiredOAuthProfileIds: ["synthetic-key"],
-      authStore: {
-        version: 1,
-        profiles: {
-          "synthetic-key": { type: "api_key", provider: "custom-openai", key: "synthetic" },
-        },
-      },
-    });
-    await expect(controller.initializeAuthProfile()).rejects.toThrow(/non-approved OAuth profile/);
-    expect(mocks.getApiKeyForModelCore).not.toHaveBeenCalled();
-  });
-
-  it("pins approved OAuth materialization without a direct credential fallback", async () => {
-    const harness = createMutableAuthControllerHarness();
-    const controller = createMutableEmbeddedRunAuthController({
-      harness,
-      setRuntimeApiKey: vi.fn(),
-      profileCandidates: ["synthetic-oauth"],
-      requiredOAuthProfileIds: ["synthetic-oauth"],
-      authStore: {
-        version: 1,
-        profiles: {
-          "synthetic-oauth": {
-            type: "oauth",
-            provider: "custom-openai",
-            access: "synthetic-access",
-            refresh: "synthetic-refresh",
-            expires: Date.now() + 30 * 60_000,
+  it.each([
+    { profileId: "custom-openai:personal", mode: "api_key" as const, storeType: "oauth" as const },
+    { profileId: "custom-openai:excluded", mode: "oauth" as const, storeType: "oauth" as const },
+    {
+      profileId: "custom-openai:personal",
+      mode: "api_key" as const,
+      storeType: "api_key" as const,
+    },
+  ])(
+    "rejects $storeType store and $profileId/$mode result before runtime installation",
+    async (resolved) => {
+      const harness = createMutableAuthControllerHarness();
+      const setRuntimeApiKey = vi.fn();
+      const controller = createMutableEmbeddedRunAuthController({
+        harness,
+        setRuntimeApiKey,
+        profileCandidates: ["custom-openai:personal"],
+        requiredOAuthProfileIds: ["custom-openai:personal"],
+        authStore: {
+          version: 1,
+          profiles: {
+            "custom-openai:personal":
+              resolved.storeType === "api_key"
+                ? { type: "api_key", provider: "custom-openai", key: "synthetic-key" }
+                : {
+                    type: "oauth",
+                    provider: "custom-openai",
+                    access: "synthetic-access",
+                    refresh: "synthetic-refresh",
+                    expires: Date.now() + 30 * 60_000,
+                  },
           },
         },
-      },
-    });
-    mocks.getApiKeyForModelCore.mockResolvedValue({
-      apiKey: "synthetic-access",
-      mode: "oauth",
-      profileId: "synthetic-oauth",
-    });
-    await controller.initializeAuthProfile();
-    expect(mocks.getApiKeyForModelCore).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        profileId: "synthetic-oauth",
-        lockedProfile: true,
-        allowAuthProfileFallback: false,
-      }),
-    );
-  });
+      });
+      mocks.getApiKeyForModelCore.mockResolvedValue({ apiKey: "synthetic", ...resolved });
+
+      await expect(controller.initializeAuthProfile()).rejects.toThrow(/OAuth profile/);
+      if (resolved.storeType === "api_key") {
+        expect(mocks.getApiKeyForModelCore).not.toHaveBeenCalled();
+      }
+      expect(setRuntimeApiKey).not.toHaveBeenCalled();
+    },
+  );
 
   it("records the palladio OAuth winner after the personal profile fails", async () => {
     const harness = createMutableAuthControllerHarness();
@@ -236,6 +227,11 @@ describe("createEmbeddedRunAuthController", () => {
       "custom-openai:personal",
       "custom-openai:palladio",
     ]);
+    expect(
+      mocks.getApiKeyForModelCore.mock.calls.every(
+        ([params]) => params.lockedProfile === true && params.allowAuthProfileFallback === false,
+      ),
+    ).toBe(true);
     expect(harness.lastProfileId).toBe("custom-openai:palladio");
   });
 
