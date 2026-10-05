@@ -466,7 +466,9 @@ async function executeAgentRun(params: StartAgentRunExecutionParams): Promise<vo
                 pluginGeneration: replyDispatchRuntime.pluginGeneration,
               },
               includeModelRunAuthProfile:
-                params.isOneShotModelRun && hasGatewayAdminScope(params.client),
+                params.isOneShotModelRun &&
+                hasGatewayAdminScope(params.client) &&
+                Boolean(params.request.requiredOAuthProfileIds),
               cronCreatorAuthority: prepared.cronCreatorAuthority,
               ingressOpts: {
                 skillLibraryAuthoring,

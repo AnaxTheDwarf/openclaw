@@ -990,7 +990,7 @@ describe("capability cli", () => {
     const content = `SELECT name FROM widgets WHERE active = true;\n${"-- context\n".repeat(20_000)}`;
     await fs.writeFile(filePath, content);
 
-    await runModelProbe("--file", filePath, "--gateway");
+    await runModelProbe("--file", filePath, "--gateway", "--timeout-seconds", "600");
 
     const call = firstGatewayCall();
     expect(call?.params).toMatchObject({
@@ -1001,7 +1001,7 @@ describe("capability cli", () => {
     expect(call?.params?.attachments).toBeUndefined();
     expect(call?.params?.message).toContain(content);
     expect(call?.params?.message).toContain("query.sql");
-    expect((call as GatewayCall & { timeoutMs?: number })?.timeoutMs).toBe(600_000);
+    expect((call as GatewayCall & { timeoutMs?: number })?.timeoutMs).toBe(610_000);
     expect(firstJsonOutput()?.inputs).toEqual([{ path: filePath, mimeType: "text/plain" }]);
   });
 
@@ -1045,6 +1045,10 @@ describe("capability cli", () => {
       error: "Model overrides must use the form <provider/model>.",
     },
     { args: ["--thinking", "turbo-mode"], error: "Invalid thinking level." },
+    {
+      args: ["--gateway", "--timeout-seconds", "601"],
+      error: "--timeout-seconds must be at most 600.",
+    },
   ])("rejects invalid model run options $args before dispatch", async ({ args, error }) => {
     await expect(runModelProbe(...args)).rejects.toThrow("exit 1");
     expectRuntimeErrorContains(error);
@@ -1094,6 +1098,8 @@ describe("capability cli", () => {
     expect(gatewayCall?.params?.cleanupBundleMcpOnRunEnd).toBe(true);
     expect(gatewayCall?.params?.modelRun).toBe(true);
     expect(gatewayCall?.params?.promptMode).toBe("none");
+    expect(gatewayCall?.params?.timeout).toBeUndefined();
+    expect((gatewayCall as GatewayCall & { timeoutMs?: number })?.timeoutMs).toBe(120_000);
 
     await runCapability("model", "run", "--prompt", "again", "--gateway", "--json");
 

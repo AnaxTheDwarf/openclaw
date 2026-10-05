@@ -119,6 +119,7 @@ async function runModelRun(params: {
   transport: CapabilityTransport;
   agent?: string;
   requiredOAuthProfiles?: string[];
+  timeoutSeconds?: number;
 }) {
   const {
     requireProviderModelOverride,
@@ -318,12 +319,13 @@ async function runModelRun(params: {
         ? { requiredOAuthProfileIds: params.requiredOAuthProfiles }
         : {}),
       promptMode: "none",
-      timeout: 600,
+      ...(params.timeoutSeconds ? { timeout: params.timeoutSeconds } : {}),
       cleanupBundleMcpOnRunEnd: true,
       idempotencyKey: randomIdempotencyKey(),
     },
     expectFinal: true,
-    timeoutMs: 600_000,
+    // Explicit run budgets need a bounded interval for Gateway settlement and wire delivery.
+    timeoutMs: params.timeoutSeconds ? params.timeoutSeconds * 1_000 + 10_000 : 120_000,
     clientName: hasModelOverride ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT : GATEWAY_CLIENT_NAMES.CLI,
     mode: hasModelOverride ? GATEWAY_CLIENT_MODES.BACKEND : GATEWAY_CLIENT_MODES.CLI,
     ...(hasModelOverride ? { scopes: [ADMIN_SCOPE] } : {}),
@@ -486,6 +488,7 @@ export function registerModelCapabilityCommands(capability: Command): void {
     .requiredOption("--prompt <text>", "Prompt text")
     .option("--file <path>", "Image file, or UTF-8 text file with --gateway", collectOption, [])
     .option("--model <provider/model>", "Model override")
+    .option("--timeout-seconds <seconds>", "Gateway timeout in seconds (1-600; default 120)")
     .option(
       "--require-oauth-profile <id>",
       "Require a successful OAuth profile (repeatable)",
@@ -522,12 +525,24 @@ export function registerModelCapabilityCommands(capability: Command): void {
           gateway: Boolean(opts.gateway),
           defaultTransport: "local",
         });
+        const timeoutText = opts.timeoutSeconds as string | undefined;
+        let timeoutSeconds: number | undefined;
+        if (timeoutText !== undefined) {
+          if (transport !== "gateway" || !/^[1-9][0-9]*$/u.test(timeoutText)) {
+            throw new Error("--timeout-seconds requires --gateway and an integer from 1 to 600.");
+          }
+          timeoutSeconds = Number(timeoutText);
+          if (timeoutSeconds > 600) {
+            throw new Error("--timeout-seconds must be at most 600.");
+          }
+        }
         return runModelRun({
           prompt,
           agent: resolveCapabilityAgentOption(command, opts.agent),
           files: opts.file as string[] | undefined,
           model: opts.model as string | undefined,
           requiredOAuthProfiles: opts.requireOauthProfile as string[] | undefined,
+          timeoutSeconds,
           thinking,
           transport,
         });
